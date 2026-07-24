@@ -36,13 +36,14 @@ return [
         'Addresses'           => 'gp_address',
         'Credential links'    => 'gp_identity_credential',
         'Exclusion links'     => 'gp_identity_exclusion',
+        'Identifiers'         => 'gp_identity_identifier',
         'Resolutions'         => 'gp_identity_resolution',
         'Source systems'      => 'gp_source_system',
     ],
 
     // JSON rollup columns on gp_identity_profile shown on the profile page.
     'profile_json' => [
-        'addresses', 'licenses', 'credentials', 'exclusions',
+        'identifiers', 'addresses', 'licenses', 'credentials', 'exclusions',
         'accounts', 'aliases', 'source_records', 'resolutions',
     ],
 

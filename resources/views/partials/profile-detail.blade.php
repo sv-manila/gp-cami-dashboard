@@ -19,6 +19,7 @@
     <tr><th>Confidence</th><td>{{ $r->confidence }}</td></tr>
     <tr><th>Records</th><td>{{ number_format($r->record_count) }}</td></tr>
     <tr><th>Accounts</th><td>{{ number_format($r->account_count) }}</td></tr>
+    <tr><th>Identifiers</th><td>{{ isset($r->identifier_count) ? number_format($r->identifier_count) : '—' }}</td></tr>
     <tr><th>Credentials</th><td>{{ number_format($r->credential_count) }}</td></tr>
     <tr><th>Exclusions</th><td>{{ number_format($r->exclusion_count) }}</td></tr>
     <tr><th>Last updated</th><td>{{ $r->last_updated ?: '—' }}</td></tr>
