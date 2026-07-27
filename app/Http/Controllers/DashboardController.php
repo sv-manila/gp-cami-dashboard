@@ -19,9 +19,23 @@ class DashboardController extends Controller
             $out = [];
             foreach (config('gpcami.stats_tables') as $label => $table) {
                 try {
-                    $out[$label] = ['count' => DB::connection($conn)->table($table)->count(), 'error' => null];
+                    // Exact count, but capped at 800ms so a busy hub (e.g. mid-backfill)
+                    // can't hang the page. COUNT(*) over a 13M-row table queued behind
+                    // heavy writes would otherwise block for tens of seconds.
+                    $r = DB::connection($conn)->selectOne("SELECT /*+ MAX_EXECUTION_TIME(800) */ COUNT(*) c FROM `$table`");
+                    $out[$label] = ['count' => (int) $r->c, 'error' => null, 'approx' => false];
                 } catch (\Throwable $e) {
-                    $out[$label] = ['count' => null, 'error' => 'unavailable'];
+                    // Fell over the cap (or errored) — use the instant approximate
+                    // row estimate from table metadata instead of blocking.
+                    try {
+                        $r = DB::connection($conn)->selectOne(
+                            'SELECT table_rows c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+                            [$table],
+                        );
+                        $out[$label] = ['count' => (int) ($r->c ?? 0), 'error' => null, 'approx' => true];
+                    } catch (\Throwable $e2) {
+                        $out[$label] = ['count' => null, 'error' => 'unavailable', 'approx' => false];
+                    }
                 }
             }
             return $out;
@@ -49,6 +63,13 @@ class DashboardController extends Controller
     public function show($identity)
     {
         $profile = GpProfile::findOrFail($identity);
-        return view('partials.profile-detail', compact('profile'));
+
+        // AJAX (from the search panel) gets the bare partial; a direct visit to
+        // the URL gets the full page with the shared nav/header wrapper.
+        if (request()->ajax() || request()->wantsJson()) {
+            return view('partials.profile-detail', compact('profile'));
+        }
+
+        return view('profile', compact('profile'));
     }
 }

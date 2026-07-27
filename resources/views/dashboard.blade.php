@@ -7,12 +7,23 @@
 
     <div class="cards">
         @foreach ($stats as $label => $s)
+            @php $help = config('gpcami.stats_help')[$label] ?? null; @endphp
             <div class="card accent">
-                <div class="label">{{ $label }}</div>
+                <div class="label">
+                    <span>{{ $label }}</span>
+                    @if ($help)
+                        <span class="info" tabindex="0" aria-label="{{ $help }}">
+                            i<span class="tip">{{ $help }}</span>
+                        </span>
+                    @endif
+                </div>
                 @if ($s['error'])
                     <div class="num err">{{ $s['error'] }}</div>
                 @else
-                    <div class="num">{{ number_format($s['count']) }}</div>
+                    <div class="num">{{ ($s['approx'] ?? false) ? '≈ ' : '' }}{{ number_format($s['count']) }}</div>
+                    @if ($s['approx'] ?? false)
+                        <div class="approx-note">approx · hub busy</div>
+                    @endif
                 @endif
             </div>
         @endforeach

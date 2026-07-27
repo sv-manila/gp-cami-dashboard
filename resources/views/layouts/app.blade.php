@@ -6,6 +6,7 @@
     <title>@yield('title', 'gp-cami dashboard')</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <link rel="icon" href="{{ asset('sv-logo.png') }}">
+    @stack('head')
 </head>
 <body>
     <div id="header">
@@ -13,6 +14,10 @@
             <img src="{{ asset('sv-logo.png') }}" alt="Streamline Verify">
             <span class="title">gp-cami dashboard <span class="muted" style="font-weight:400;font-size:12px;">· dev</span></span>
         </div>
+        <nav class="tabs">
+            <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Dashboard</a>
+            <a href="{{ route('features') }}" class="{{ request()->routeIs('features') ? 'active' : '' }}">Overview</a>
+        </nav>
     </div>
 
     <main>
