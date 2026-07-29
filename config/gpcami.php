@@ -31,14 +31,9 @@ return [
         'Identity profiles'   => 'gp_identity_profile',
         'Identities'          => 'gp_identity',
         'Staged persons'      => 'stg_person',
-        'Source links'        => 'gp_source_link',
         'Licenses'            => 'gp_license',
-        'Addresses'           => 'gp_address',
         'Credential links'    => 'gp_identity_credential',
         'Exclusion links'     => 'gp_identity_exclusion',
-        'Identifiers'         => 'gp_identity_identifier',
-        'Resolutions'         => 'gp_identity_resolution',
-        'Source systems'      => 'gp_source_system',
     ],
 
     // One-line explanation per stat (label => help text), shown on hover.
@@ -46,14 +41,9 @@ return [
         'Identity profiles' => 'Denormalized read model — one wide, ready-to-serve row per resolved person (what this dashboard and the API read).',
         'Identities'        => 'Distinct real people after resolution. Many source records collapse into one identity.',
         'Staged persons'    => 'Source employee rows mapped into the canonical staging shape before resolution. Roughly one per source record.',
-        'Source links'      => 'Each source record bound to the identity it resolved to, with the match method, key and confidence.',
         'Licenses'          => 'Professional licenses (number + state + board) attached to identities, deduplicated across sources.',
-        'Addresses'         => 'Mailing / practice / alternate addresses attached to identities.',
         'Credential links'  => 'Credential-verification matches rolled up to an identity (confirmed links) — a person’s registry credential status.',
         'Exclusion links'   => 'Exclusion-list hits rolled up to an identity (candidate links) — potential OIG/SAM/state exclusions to review.',
-        'Identifiers'       => 'Multi-valued match keys such as DEA and MMIS numbers (from employee_additional_info); a shared value merges identities.',
-        'Resolutions'       => 'Steward decisions recorded per identity (confirm / split / relink) — the human review trail.',
-        'Source systems'    => 'Registered upstream systems feeding the hub, each with a reliability rank used in survivorship.',
     ],
 
     // JSON rollup columns on gp_identity_profile shown on the profile page.

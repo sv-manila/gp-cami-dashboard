@@ -54,7 +54,8 @@ h1{color:var(--navy);font-size:22px;font-weight:800;letter-spacing:-.02em;margin
 .muted{color:var(--ink-faint);}
 
 /* ---- stat cards ---- */
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+@media (max-width:640px){.cards{grid-template-columns:1fr;}}
 .card{position:relative;background:var(--surface);border:1px solid var(--line);
   border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);
   transition:transform .15s,box-shadow .15s;}
