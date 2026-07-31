@@ -104,6 +104,27 @@ return [
             ]) : [],
         ],
 
+        // ---- CAMI source DB (read-only): the raw scraper/exclusion payloads.
+        // The hub only keeps summary columns, so the underlying match JSON has
+        // to come from here. Same credentials gp-cami ingests with.
+        'src' => [
+            'driver' => 'mysql',
+            'host' => env('SRC_DB_HOST', '127.0.0.1'),
+            'port' => env('SRC_DB_PORT', '3306'),
+            'database' => env('SRC_DB_DATABASE', 'client_pre_qa'),
+            'username' => env('SRC_DB_USERNAME', 'root'),
+            'password' => env('SRC_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),

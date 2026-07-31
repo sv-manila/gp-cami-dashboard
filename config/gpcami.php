@@ -14,6 +14,9 @@ return [
 
     'connection' => 'golden_profile',
 
+    // CAMI source DB — holds the raw match payloads the hub does not copy.
+    'source_connection' => 'src',
+
     // Master person/profile table used for search + profile display.
     'profile_table' => 'gp_identity_profile',
 

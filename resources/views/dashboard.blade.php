@@ -20,9 +20,15 @@
                 @if ($s['error'])
                     <div class="num err">{{ $s['error'] }}</div>
                 @else
-                    <div class="num">{{ ($s['approx'] ?? false) ? '≈ ' : '' }}{{ number_format($s['count']) }}</div>
+                    <div class="num" data-table="{{ config('gpcami.stats_tables')[$label] }}">{{ ($s['approx'] ?? false) ? '≈ ' : '' }}{{ number_format($s['count']) }}</div>
                     @if ($s['approx'] ?? false)
-                        <div class="approx-note">approx · hub busy</div>
+                        {{-- Not a busy hub: InnoDB has no stored row count, so an exact
+                             COUNT(*) over 13M rows takes seconds. Estimate now, exact on request. --}}
+                        <div class="approx-note">
+                            estimate
+                            <button type="button" class="btn-mini js-exact"
+                                    data-table="{{ config('gpcami.stats_tables')[$label] }}">count exactly</button>
+                        </div>
                     @endif
                 @endif
             </div>
@@ -32,7 +38,7 @@
     <h1 style="margin-top:28px;">Search</h1>
     <p class="sub">Find all gp-cami data under a name. First and last name only.</p>
 
-    <form class="search" method="get" action="{{ route('dashboard') }}">
+    <form class="search" id="search-form" method="get" action="{{ route('dashboard') }}">
         <div class="field">
             <label for="first_name">First name</label>
             <input type="text" id="first_name" name="first_name" value="{{ $first }}" autofocus>
@@ -41,7 +47,13 @@
             <label for="last_name">Last name</label>
             <input type="text" id="last_name" name="last_name" value="{{ $last }}">
         </div>
-        <button class="btn" type="submit">Search</button>
+        <button class="btn" id="search-btn" type="submit">
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="btn-label">Search</span>
+        </button>
+        <div class="search-status" id="search-status" role="status" aria-live="polite" hidden>
+            Searching the hub…
+        </div>
     </form>
 
     @if ($error)
@@ -75,6 +87,54 @@
     @endif
 
     <script>
+        // Search is a plain GET round-trip against a 13M-row hub — show that
+        // something is happening instead of a frozen-looking page.
+        (function () {
+            var form = document.getElementById('search-form');
+            if (!form) return;
+            var btn = document.getElementById('search-btn');
+            var status = document.getElementById('search-status');
+            form.addEventListener('submit', function () {
+                btn.classList.add('loading');
+                btn.disabled = true;
+                btn.querySelector('.btn-label').textContent = 'Searching…';
+                status.hidden = false;
+            });
+            // Back/forward cache restore leaves the button stuck mid-spin.
+            window.addEventListener('pageshow', function (e) {
+                if (!e.persisted) return;
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                btn.querySelector('.btn-label').textContent = 'Search';
+                status.hidden = true;
+            });
+        })();
+
+        // "count exactly" on an estimated stat card.
+        (function () {
+            var base = "{{ url('/stats/exact') }}";
+            document.querySelectorAll('.js-exact').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var note = btn.parentNode;
+                    var num = note.parentNode.querySelector('.num');
+                    btn.disabled = true;
+                    btn.textContent = 'counting…';
+                    fetch(base + '/' + btn.dataset.table, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                        .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, body: j }; }); })
+                        .then(function (r) {
+                            if (!r.ok) throw new Error(r.body.error || 'count failed');
+                            num.textContent = r.body.count.toLocaleString();
+                            note.textContent = 'exact';
+                        })
+                        .catch(function (e) {
+                            btn.disabled = false;
+                            btn.textContent = 'count exactly';
+                            note.title = e.message;
+                        });
+                });
+            });
+        })();
+
         (function () {
             var panel = document.getElementById('detail-panel');
             if (!panel) return;
@@ -83,7 +143,8 @@
                 btn.addEventListener('click', function () {
                     document.querySelectorAll('.name-item.active').forEach(function (b) { b.classList.remove('active'); });
                     btn.classList.add('active');
-                    panel.innerHTML = '<div class="detail-placeholder muted">Loading…</div>';
+                    panel.innerHTML = '<div class="detail-placeholder muted">'
+                        + '<span class="spinner dark"></span> Loading…</div>';
                     fetch(base + '/' + btn.dataset.id, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                         .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
                         .then(function (html) { panel.innerHTML = html; })

@@ -27,5 +27,57 @@
     <footer>
         gp-cami dashboard — read-only view of the <b>golden_profile</b> hub. Development use only.
     </footer>
+
+    <script>
+        // "Match data" buttons live inside markup that is sometimes injected by
+        // fetch(), so the handler is delegated from the document instead of bound
+        // per button. Each row's payload is fetched once and then toggled.
+        (function () {
+            var base = "{{ url('/match') }}";
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('.js-match');
+                if (!btn) return;
+
+                var row = btn.closest('tr');
+                var next = row.nextElementSibling;
+                if (next && next.classList.contains('match-json-row')) {
+                    var open = next.style.display !== 'none';
+                    next.style.display = open ? 'none' : '';
+                    btn.textContent = open ? 'Match data' : 'Hide';
+                    return;
+                }
+
+                var tr = document.createElement('tr');
+                tr.className = 'match-json-row';
+                tr.innerHTML = '<td colspan="' + (btn.dataset.cols || 6) + '">'
+                    + '<div class="muted"><span class="spinner dark"></span> Loading match data…</div></td>';
+                row.parentNode.insertBefore(tr, row.nextSibling);
+                btn.textContent = 'Hide';
+
+                fetch(base + '/' + btn.dataset.kind + '/' + btn.dataset.id,
+                      { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, body: j }; }); })
+                    .then(function (r) {
+                        var pre = document.createElement('pre');
+                        pre.className = 'json';
+                        pre.textContent = JSON.stringify(r.body, null, 2);
+                        var cell = tr.firstChild;
+                        cell.innerHTML = '';
+                        if (!r.ok) {
+                            var msg = document.createElement('div');
+                            msg.className = 'error';
+                            msg.textContent = r.body.error || 'Could not load the match data.';
+                            cell.appendChild(msg);
+                        } else {
+                            cell.appendChild(pre);
+                        }
+                    })
+                    .catch(function (err) {
+                        tr.firstChild.innerHTML = '<div class="error">Could not load the match data: '
+                            + err.message + '</div>';
+                    });
+            });
+        })();
+    </script>
 </body>
 </html>

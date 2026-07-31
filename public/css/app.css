@@ -101,6 +101,20 @@ form.search{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;
   border-radius:7px;padding:10px 24px;transition:filter .15s,transform .05s;}
 .btn:hover{filter:brightness(1.06);text-decoration:none;}
 .btn:active{transform:translateY(1px);}
+.btn{display:inline-flex;align-items:center;gap:8px;}
+.btn:disabled{cursor:progress;filter:none;opacity:.85;}
+
+/* ---- loading indicator ---- */
+.spinner{display:none;width:14px;height:14px;flex:none;border-radius:50%;
+  border:2px solid rgba(255,255,255,.45);border-top-color:#fff;
+  animation:spin .6s linear infinite;}
+.btn.loading .spinner{display:inline-block;}
+.spinner.dark{display:inline-block;vertical-align:-2px;margin-right:6px;
+  border-color:var(--line);border-top-color:var(--orange);}
+@keyframes spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:1.6s;}}
+.search-status{flex-basis:100%;color:var(--ink-faint);font-size:12px;font-weight:600;
+  letter-spacing:.2px;}
 
 /* ---- tables ---- */
 table{width:100%;border-collapse:collapse;background:var(--surface);
@@ -161,6 +175,25 @@ table.kv tr:first-child th,table.kv tr:first-child td{border-top:none;}
   border-radius:8px;padding:14px 16px;color:var(--ink-soft);margin-top:16px;}
 .error{background:var(--crit-wash);border:1px solid var(--crit);border-radius:8px;
   color:var(--crit);padding:14px 16px;margin-top:16px;}
+
+/* ---- plain-language explanation block ---- */
+.plain{background:var(--surface-2);border:1px solid var(--line);border-left:4px solid var(--orange);
+  border-radius:8px;padding:12px 14px;color:var(--ink);font-size:14px;line-height:1.6;}
+.plain p+p{margin-top:8px;}
+.plain .badge{margin-right:6px;}
+
+/* ---- inline "match data" buttons + expanded JSON row ---- */
+.btn-mini{font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
+  background:transparent;color:var(--link);border:1px solid var(--line);border-radius:6px;
+  padding:3px 9px;transition:background .12s,border-color .12s;}
+.btn-mini:hover{background:var(--surface-2);border-color:var(--link);}
+.match-json-row td{background:var(--surface-2);}
+.match-json-row pre.json{margin:0;max-height:420px;}
+
+/* ---- basis chips ---- */
+.basis-chip{display:inline-block;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:999px;padding:2px 10px;margin:0 6px 6px 0;font-size:12px;font-weight:600;
+  color:var(--ink-soft);}
 
 /* ---- json blocks ---- */
 details{margin-top:8px;}
