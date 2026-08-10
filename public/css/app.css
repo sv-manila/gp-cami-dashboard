@@ -198,9 +198,17 @@ table.kv tr:first-child th,table.kv tr:first-child td{border-top:none;}
 /* ---- json blocks ---- */
 details{margin-top:8px;}
 summary{cursor:pointer;color:var(--link);font-weight:700;}
+/* Wraps rather than scrolling sideways. `white-space:pre` plus `overflow:auto`
+   looks like it should scroll, and does not: inside a table cell there is no
+   width to overflow against, so the element takes its content's min-content
+   width and the cell, the table and the page all stretch to match. A 400-char
+   scraper payload line measured 2764px wide in a 1160px column and pushed the
+   document to 2891px against a 1265px viewport. Wrapping caps min-content
+   width at one character, so the cell can shrink again. */
 pre.json{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
   padding:12px;margin-top:8px;overflow:auto;font-size:12px;font-family:var(--mono);
-  max-height:340px;line-height:1.5;}
+  max-height:340px;line-height:1.5;
+  white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;}
 
 /* ---- footer ---- */
 footer{max-width:1160px;margin:30px auto;padding:16px 24px;color:var(--ink-faint);
@@ -210,6 +218,18 @@ footer b{color:var(--ink-soft);}
 @media (max-width:720px){
   .results-layout{grid-template-columns:1fr;}
   main{padding:0 16px;}
+  /* Data tables have a min-content width well past a narrow viewport — the
+     key/value table alone needs 548px — so below this breakpoint they scrolled
+     the whole document sideways (measured 211px of page bleed at 586px, with or
+     without any JSON open). Scroll inside the table's own box instead, so the
+     page itself never moves. display:block is what gives overflow something to
+     act on; a table box ignores overflow-x. */
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  /* The tab bar is a non-wrapping flex row 552px wide, so it — not any table —
+     accounted for the last 178px of page bleed here (hiding it dropped the
+     document to exactly the viewport width). Scroll it rather than the page. */
+  nav.tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  nav.tabs::-webkit-scrollbar{height:0;}
 }
 
 .approx-note{font-size:10px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;
