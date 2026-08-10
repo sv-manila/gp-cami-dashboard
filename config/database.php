@@ -101,6 +101,10 @@ return [
             // read-only: dashboard never writes to gp-cami
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Cap the connect wait. With the driver default an unreachable hub
+                // made every gated request sit for ~8s before failing closed, so a
+                // down VM read as a hung dashboard rather than an error.
+                \PDO::ATTR_TIMEOUT => (int) env('GP_DB_CONNECT_TIMEOUT', 3),
             ]) : [],
         ],
 
@@ -122,6 +126,8 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // See the golden_profile note above.
+                \PDO::ATTR_TIMEOUT => (int) env('SRC_DB_CONNECT_TIMEOUT', 3),
             ]) : [],
         ],
 

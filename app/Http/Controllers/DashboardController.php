@@ -3,10 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\GpProfile;
+use App\Models\MergeBasis;
+use App\Models\StatSnapshot;
+use App\Services\ProfileSearch;
+use App\Services\SearchInputException;
+use App\Services\SearchResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DashboardController extends Controller
 {
@@ -16,14 +23,236 @@ class DashboardController extends Controller
     /** Rollup JSON columns bigger than this are not loaded (PHP memory_limit is 128M). */
     private const MAX_JSON_BYTES = 2097152;
 
-    /** Above this many source records, skip the derived shared-key probe (seconds, not ms). */
+    /** Above this many source records, skip the live shared-key probe (seconds, not ms). */
     private const MAX_DERIVE_LINKS = 500;
 
-    /** One page: Golden Profile Stats + name search (results list only). */
+    public function __construct(
+        private SearchResolver $resolver,
+        private ProfileSearch $search,
+    ) {}
+
+    /** One page: Golden Profile Stats (with trend) + smart search. */
     public function index(Request $request)
     {
+        $stats = $this->stats();
+        $trends = StatSnapshot::series(StatSnapshot::TABLE_COUNT, 30);
+
+        $query = $this->queryFromRequest($request);
+        $searched = $query !== '' && $request->hasAny(['q', 'first_name', 'last_name']);
+
+        $criteria = $this->resolver->resolve($query);
+
+        $empty = ['paginator' => null, 'matched_on' => null, 'error' => null, 'suggestions' => []];
+
+        try {
+            $opts = $this->optionsFromRequest($request, $criteria);
+        } catch (SearchInputException $e) {
+            // A rejected filter has to be reported, not dropped — see
+            // normalizeDob(). Fall back to safe defaults so the page still renders
+            // with the stats board and the message.
+            $opts = ['per_page' => config('gpcami.per_page', 50), 'cursor' => null,
+                'prefix' => $request->boolean('prefix'), 'dob' => null,
+                'exclusions_only' => $request->boolean('excl'), 'last_name' => null];
+
+            $result = $empty;
+            $result['error'] = $e->getMessage();
+            $searched = false;
+        }
+
+        $result ??= $searched ? $this->search->run($criteria, $opts) : $empty;
+
+        return view('dashboard', [
+            'stats'       => $stats,
+            'trends'      => $trends,
+            'query'       => $query,
+            'criteria'    => $criteria,
+            'searched'    => $searched,
+            'results'     => $result['paginator'],
+            'matchedOn'   => $result['matched_on'],
+            'error'       => $result['error'],
+            'suggestions' => $result['suggestions'],
+            'prefix'      => (bool) $opts['prefix'],
+            'dob'         => $opts['dob'],
+            'exclOnly'    => (bool) $opts['exclusions_only'],
+            'selected'    => $request->query('identity'),
+        ]);
+    }
+
+    /**
+     * The current search as CSV or JSON.
+     *
+     * Deliberately the same code path as the on-screen results — an export that
+     * silently applies different filters than the page above it is worse than
+     * no export at all.
+     */
+    public function export(Request $request, string $format = 'csv')
+    {
+        if (! in_array($format, ['csv', 'json'], true)) {
+            abort(404);
+        }
+
+        $criteria = $this->resolver->resolve($this->queryFromRequest($request));
+
+        try {
+            // optionsFromRequest validates the dob filter and can reject it, so it
+            // belongs inside the same guard as stream(): an export must never
+            // silently drop a filter the on-screen results would have applied.
+            $opts = $this->optionsFromRequest($request, $criteria);
+            $rows = $this->search->stream($criteria, $opts);
+        } catch (SearchInputException $e) {
+            return response($e->getMessage(), 422);
+        }
+
+        $columns = config('gpcami.list_columns');
+        $name = 'gp-cami-' . preg_replace('/[^a-z0-9]+/i', '-', $criteria['raw'] ?: 'search')
+            . '-' . now()->format('Ymd-His') . '.' . $format;
+
+        return new StreamedResponse(function () use ($rows, $columns, $format) {
+            // A streamed export is not a page render and must not inherit the web
+            // request's max_execution_time (30s here). Exceeding it is a FATAL, not
+            // a catchable Throwable, so the try/catch below cannot help: PHP tore
+            // the script down mid-stream and the error handler appended its debug
+            // page into the .csv. Raise the wall clock for the download, but keep
+            // it finite so a runaway still dies; the statement itself is separately
+            // bounded by gpcami.export_timeout_ms.
+            set_time_limit((int) config('gpcami.export_time_limit', 300));
+
+            $handle = fopen('php://output', 'w');
+
+            // The status line and Content-Type are already on the wire by the time
+            // this callback runs, so a query failure in here cannot become a 4xx.
+            // Without a catch, the exception handler appended its debug page to
+            // the download: a `.csv` that opened as 805KB of HTML behind a 200 and
+            // zero data rows. Fail in-band, in the file's own format, and log it.
+            try {
+                if ($format === 'csv') {
+                    fputcsv($handle, $columns);
+                    foreach ($rows as $row) {
+                        fputcsv($handle, array_map(fn ($c) => self::csvSafe($row->{$c}), $columns));
+                    }
+                } else {
+                    // Streamed as a JSON array so a 10k-row export never has to be
+                    // held in memory in full.
+                    fwrite($handle, "[\n");
+                    $first = true;
+                    foreach ($rows as $row) {
+                        fwrite($handle, ($first ? '' : ",\n") . json_encode($row->only($columns), JSON_UNESCAPED_SLASHES));
+                        $first = false;
+                    }
+                    fwrite($handle, "\n]\n");
+                }
+            } catch (\Throwable $e) {
+                Log::error('gp-cami export failed mid-stream', ['format' => $format, 'exception' => $e->getMessage()]);
+
+                if ($format === 'csv') {
+                    fputcsv($handle, ['# EXPORT FAILED — this file is incomplete. See the application log.']);
+                } else {
+                    fwrite($handle, "\n], \"error\": \"Export failed and this file is incomplete. See the application log.\"\n");
+                }
+            }
+
+            fclose($handle);
+        }, 200, [
+            'Content-Type'        => $format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json',
+            'Content-Disposition' => 'attachment; filename="' . $name . '"',
+            'X-Export-Limit'      => (string) config('gpcami.export_limit'),
+        ]);
+    }
+
+    /**
+     * A date-of-birth filter is only meaningful as a real Y-m-d date.
+     *
+     * Anything else was passed through to the query as-is, where MySQL compared a
+     * DATE column against a non-date, matched nothing, and produced a normal
+     * "0 results" page. `?dob=notadate` and `?dob=' OR 1=1` were therefore
+     * indistinguishable from "this person is not in the hub" — the most misleading
+     * possible answer, because the user's actual filter was silently discarded.
+     *
+     * @throws SearchInputException
+     */
+    private static function normalizeDob($value): ?string
+    {
+        $dob = trim((string) $value);
+        if ($dob === '') {
+            return null;
+        }
+
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', $dob);
+
+        // createFromFormat accepts out-of-range parts (2026-13-45) and rolls them
+        // over, so round-trip the result to reject anything that was not already a
+        // valid calendar date.
+        if (! $parsed || $parsed->format('Y-m-d') !== $dob) {
+            throw new SearchInputException(
+                'Date of birth must be a calendar date in YYYY-MM-DD form (for example 1985-04-23). '
+                .'The filter was ignored rather than applied — clear or correct it.',
+            );
+        }
+
+        return $dob;
+    }
+
+    /**
+     * Neutralise spreadsheet formula injection.
+     *
+     * Excel and Sheets evaluate a cell whose text begins with =, +, -, @, or a
+     * leading tab/CR as a formula, which turns an exported name into code that
+     * runs on the reviewer's machine. Names in this hub come from scraped
+     * registries, so the content is not trustworthy. Prefixing with an
+     * apostrophe keeps the value readable while forcing it to stay text.
+     */
+    private static function csvSafe($value): mixed
+    {
+        if (! is_string($value) || $value === '') {
+            return $value;
+        }
+
+        return str_contains("=+-@\t\r", $value[0]) ? "'".$value : $value;
+    }
+
+    /**
+     * Search terms arrive two ways: the smart box (`q`), and the older
+     * first_name/last_name pair that existing bookmarks and the profile page's
+     * "other records under this name" links still use.
+     */
+    private function queryFromRequest(Request $request): string
+    {
+        if ($request->filled('q')) {
+            return trim((string) $request->query('q'));
+        }
+
+        $first = trim((string) $request->query('first_name', ''));
+        $last = trim((string) $request->query('last_name', ''));
+
+        return trim($first . ' ' . $last);
+    }
+
+    /** @return array<string,mixed> */
+    private function optionsFromRequest(Request $request, array $criteria): array
+    {
+        // An ssn4: term needs a surname from somewhere; accept it either as a
+        // separate field or from the older last_name parameter.
+        $last = trim((string) $request->query('last', $request->query('last_name', '')));
+
+        return [
+            'per_page'        => config('gpcami.per_page', 50),
+            'cursor'          => $request->query('cursor'),
+            'prefix'          => $request->boolean('prefix'),
+            'dob'             => self::normalizeDob($request->query('dob')),
+            'exclusions_only' => $request->boolean('excl'),
+            'last_name'       => $last ?: ($criteria['last'] ?? null),
+        ];
+    }
+
+    /**
+     * Stats board counts, with the previous snapshot for a day-over-day delta.
+     *
+     * @return array<string,array{count:?int,error:?string,approx:bool,delta:?int}>
+     */
+    private function stats(): array
+    {
         $conn = config('gpcami.connection');
-        $ttl  = (int) config('gpcami.cache_ttl', 60);
+        $ttl = (int) config('gpcami.cache_ttl', 60);
 
         $stats = Cache::remember('gpcami.stats', $ttl, function () use ($conn) {
             $out = [];
@@ -49,34 +278,38 @@ class DashboardController extends Controller
                     }
                 }
             }
+
             return $out;
         });
 
-        $first = trim((string) $request->query('first_name', ''));
-        $last  = trim((string) $request->query('last_name', ''));
-        $searched = $request->has('first_name') || $request->has('last_name');
+        // Yesterday's recorded value, so a stalled rollup shows up as a flat
+        // delta rather than a number nobody can compare against.
+        // Keep the snapshot's own approx flag: a stored estimate is no more
+        // comparable than a live one.
+        $previous = StatSnapshot::query()
+            ->where('metric', StatSnapshot::TABLE_COUNT)
+            ->where('captured_on', '<', now()->toDateString())
+            ->orderByDesc('captured_on')
+            ->get()
+            ->groupBy('label')
+            ->map(fn ($g) => ['value' => (int) $g->first()->value, 'approx' => (bool) $g->first()->approx]);
 
-        $results = collect();
-        $error = null;
+        foreach ($stats as $label => $s) {
+            // Only compare like with like. Today's number falls back to
+            // information_schema's estimate whenever the exact COUNT(*) exceeds
+            // its time cap, and on the 13M-row tables that is the normal path —
+            // so subtracting yesterday's exact snapshot from today's estimate
+            // reported swings of +279,953 / -430,369 / -428,236 on a hub that had
+            // not changed at all, next to a visibly flat sparkline.
+            $comparable = $s['count'] !== null
+                && empty($s['approx'])
+                && isset($previous[$label])
+                && ! $previous[$label]['approx'];
 
-        if ($searched && ($first !== '' || $last !== '')) {
-            $table = config('gpcami.profile_table');
-            try {
-                // Capped like the stats counts: idx_name_dob leads with last_name,
-                // so a first-name-only search can't use it and would scan 13M rows.
-                // Fail fast with a hint instead of hanging the page.
-                $results = GpProfile::byName($first, $last)
-                    ->selectRaw("/*+ MAX_EXECUTION_TIME(15000) */ `$table`.*")
-                    ->limit(500)
-                    ->get();
-            } catch (\Throwable $e) {
-                $error = str_contains($e->getMessage(), '3024') || str_contains($e->getMessage(), 'maximum statement execution time')
-                    ? 'Search timed out. A first-name-only search has to scan the whole hub — add a last name (the index is last name first).'
-                    : 'gp-cami query failed: ' . $e->getMessage();
-            }
+            $stats[$label]['delta'] = $comparable ? $s['count'] - $previous[$label]['value'] : null;
         }
 
-        return view('dashboard', compact('stats', 'first', 'last', 'searched', 'results', 'error'));
+        return $stats;
     }
 
     /** Full details for one identity (right-side panel, loaded on name click). */
@@ -174,6 +407,15 @@ class DashboardController extends Controller
     {
         $src = config('gpcami.source_connection');
 
+        // Only ids the hub actually links to an identity are readable. Without
+        // this the route is a raw numeric cursor over credential_matches / matches
+        // in the CAMI source DB — anyone who can reach the dashboard could walk
+        // 1..N and dump match payloads for people they never looked up, which is
+        // both more data and more sensitive data than the hub itself exposes.
+        if (! $this->matchIsLinkedToIdentity($kind, $id)) {
+            abort(404);
+        }
+
         try {
             if ($kind === 'credential') {
                 $row = DB::connection($src)->selectOne(
@@ -207,10 +449,51 @@ class DashboardController extends Controller
                 $payload['exclusion_record'] = $this->decodeOrRaw($row->record);
             }
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Could not reach the CAMI source database: ' . $e->getMessage()], 502);
+            // The driver message can carry hostnames, schema and column names —
+            // log it, don't ship it to the browser.
+            Log::error('matchJson source query failed', ['kind' => $kind, 'id' => $id, 'exception' => $e->getMessage()]);
+
+            return response()->json(['error' => 'Could not reach the CAMI source database.'], 502);
         }
 
         return response()->json($payload, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * Is this source match id reachable through the hub at all? Credential ids are
+     * linked via gp_identity_credential.credential_match_id, exclusion ids via
+     * gp_identity_exclusion.match_id.
+     *
+     * COST, measured — an earlier version of this comment claimed a ~2ms skip scan,
+     * which was wrong: neither column has its own index, and on the current data
+     * the plan is type=ALL over ~3.21M rows, about 2.24s per request. That is the
+     * price of the gate, and it is worth paying (without it the route is a numeric
+     * cursor over the source DB), but it is not free. `gpdash:index-advisor` lists
+     * the dedicated index that turns this into a point lookup — adding it is the
+     * real fix, and it needs an operator because it ALTERs the shared hub.
+     *
+     * Results are cached briefly: the profile panel loads several match payloads
+     * per view, and re-running a multi-second scan for each one is what made the
+     * page feel broken. Link membership does not change within a page view.
+     */
+    private function matchIsLinkedToIdentity(string $kind, int $id): bool
+    {
+        [$table, $column] = $kind === 'credential'
+            ? ['gp_identity_credential', 'credential_match_id']
+            : ['gp_identity_exclusion', 'match_id'];
+
+        try {
+            return Cache::remember(
+                "gpcami.match-linked.$kind.$id",
+                (int) config('gpcami.match_gate_ttl', 300),
+                fn () => DB::connection(config('gpcami.connection'))
+                    ->table($table)->where($column, $id)->limit(1)->exists(),
+            );
+        } catch (\Throwable $e) {
+            Log::error('matchJson link check failed', ['kind' => $kind, 'id' => $id, 'exception' => $e->getMessage()]);
+
+            return false;   // fail closed
+        }
     }
 
     /** Scraper payloads are usually JSON but not guaranteed to be. */
@@ -228,10 +511,15 @@ class DashboardController extends Controller
      * Why this identity looks the way it does: how each source record was
      * linked (gp_source_link), which rule picked each canonical value
      * (gp_survivorship_audit), and — when the links predate the merge that
-     * joined them — the keys the members demonstrably share.
+     * joined them — the keys the members demonstrably share or disagree on.
      *
-     * All three are indexed lookups by identity_id. Best-effort: a hub problem
-     * degrades this section, it never breaks the profile.
+     * The shared/conflicting keys come from `gpdash:merge-basis` when it has run
+     * for this identity, and are derived live otherwise. Precomputing matters
+     * most for the identities the live path used to skip: above 500 links it
+     * gave up, which is exactly where the question is worth asking.
+     *
+     * All the hub reads are indexed lookups by identity_id. Best-effort: a hub
+     * problem degrades this section, it never breaks the profile.
      */
     private function basisFor(int $identityId): array
     {
@@ -239,6 +527,7 @@ class DashboardController extends Controller
         $out = [
             'links' => [], 'link_total' => 0, 'by_key' => [], 'weakest' => null,
             'needs_review' => 0, 'pinned' => 0, 'audit' => [], 'shared' => [],
+            'conflicts' => [], 'basis_source' => null, 'basis_truncated' => false,
             'derive_skipped' => false, 'error' => null,
         ];
 
@@ -289,14 +578,9 @@ class DashboardController extends Controller
             // match_key is stamped when a row is first linked and is NOT rewritten
             // when a later dedup tier merges two identities — so a multi-record
             // identity whose links all say 'new' has no recorded merge basis.
-            // Recover it by looking at what the members actually share.
             $keys = array_keys($out['by_key']);
             if (count($out['links']) > 1 && $keys === ['new']) {
-                if ($out['link_total'] <= self::MAX_DERIVE_LINKS) {
-                    $out['shared'] = $this->sharedKeys($db, $identityId);
-                } else {
-                    $out['derive_skipped'] = true;
-                }
+                $this->attachDerivedBasis($out, $identityId);
             }
         } catch (\Throwable $e) {
             $out['error'] = $e->getMessage();
@@ -305,89 +589,28 @@ class DashboardController extends Controller
         return $out;
     }
 
-    /** Key fields where every member row that has a value agrees on one value. */
-    private function sharedKeys($db, int $identityId): array
+    /** Stored basis if `gpdash:merge-basis` has run for this identity, live derive otherwise. */
+    private function attachDerivedBasis(array &$out, int $identityId): void
     {
-        $rows = $db->select(
-            'SELECT /*+ MAX_EXECUTION_TIME(10000) */
-                    p.npi, p.ssn_hash, p.ssn_last_four, p.dea_number, p.upin,
-                    p.date_of_birth, p.first_name, p.last_name
-               FROM gp_source_link l
-               JOIN stg_person p
-                 ON p.system_id = l.system_id
-                AND p.source_table = l.source_table
-                AND p.source_id = l.source_id
-              WHERE l.identity_id = ?
-              LIMIT ' . self::MAX_BASIS_ROWS,
-            [$identityId],
-        );
-        if (count($rows) < 2) {
-            return [];
+        if ($stored = MergeBasis::find($identityId)) {
+            $out['shared'] = $stored->basis ?? [];
+            $out['conflicts'] = $stored->conflicts ?? [];
+            $out['basis_source'] = 'precomputed ' . $stored->computed_at?->diffForHumans();
+            $out['basis_truncated'] = $stored->truncated;
+
+            return;
         }
 
-        $fields = [
-            'npi' => fn ($r) => $r->npi,
-            'ssn' => fn ($r) => $r->ssn_hash ? 'hash ' . substr($r->ssn_hash, 0, 10) . '…' : null,
-            'dea' => fn ($r) => $r->dea_number,
-            'upin' => fn ($r) => $r->upin,
-            'name + dob' => fn ($r) => $r->date_of_birth
-                ? mb_strtolower(trim($r->first_name . ' ' . $r->last_name)) . ' · ' . $r->date_of_birth
-                : null,
-        ];
+        if ($out['link_total'] > self::MAX_DERIVE_LINKS) {
+            $out['derive_skipped'] = true;
 
-        $shared = [];
-        foreach ($fields as $label => $get) {
-            $vals = array_filter(array_map($get, $rows), fn ($v) => $v !== null && $v !== '');
-            $distinct = array_unique($vals);
-            // Two or more members carry it and they all agree.
-            if (count($vals) > 1 && count($distinct) === 1) {
-                $shared[$label] = ['value' => reset($distinct), 'members' => count($vals)];
-            }
+            return;
         }
 
-        // Licenses and DEA/MMIS identifiers live on child tables, and merging on
-        // a shared license is the most common reason a set of 'new' links ended
-        // up on one identity (mergeByLicense runs after enrich, post-link).
-        $lic = $db->select(
-            'SELECT /*+ MAX_EXECUTION_TIME(10000) */
-                    spl.license_number, spl.certification_state,
-                    COUNT(DISTINCT sp.stg_person_id) n
-               FROM gp_source_link l
-               JOIN stg_person sp
-                 ON sp.system_id = l.system_id AND sp.source_table = l.source_table AND sp.source_id = l.source_id
-               JOIN stg_person_license spl ON spl.stg_person_id = sp.stg_person_id
-              WHERE l.identity_id = ?
-              GROUP BY spl.license_number, spl.certification_state
-             HAVING n > 1
-              ORDER BY n DESC
-              LIMIT 5',
-            [$identityId],
-        );
-        foreach ($lic as $i => $row) {
-            $shared['license' . ($i ? ' #' . ($i + 1) : '')] = [
-                'value' => $row->license_number . ($row->certification_state ? ' · ' . $row->certification_state : ''),
-                'members' => (int) $row->n,
-            ];
-        }
-
-        $ids = $db->select(
-            'SELECT /*+ MAX_EXECUTION_TIME(10000) */
-                    spi.id_type, spi.id_value, COUNT(DISTINCT sp.stg_person_id) n
-               FROM gp_source_link l
-               JOIN stg_person sp
-                 ON sp.system_id = l.system_id AND sp.source_table = l.source_table AND sp.source_id = l.source_id
-               JOIN stg_person_identifier spi ON spi.stg_person_id = sp.stg_person_id
-              WHERE l.identity_id = ?
-              GROUP BY spi.id_type, spi.id_value
-             HAVING n > 1
-              ORDER BY n DESC
-              LIMIT 5',
-            [$identityId],
-        );
-        foreach ($ids as $row) {
-            $shared[$row->id_type] = ['value' => $row->id_value, 'members' => (int) $row->n];
-        }
-
-        return $shared;
+        $derived = app(\App\Services\MergeBasisDeriver::class)->derive($identityId);
+        $out['shared'] = $derived['basis'];
+        $out['conflicts'] = $derived['conflicts'];
+        $out['basis_source'] = 'derived now';
+        $out['basis_truncated'] = $derived['truncated'];
     }
 }

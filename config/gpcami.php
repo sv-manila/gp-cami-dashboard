@@ -20,6 +20,12 @@ return [
     // Master person/profile table used for search + profile display.
     'profile_table' => 'gp_identity_profile',
 
+    // The source system and table a bare employee id belongs to. Both leading
+    // columns of gp_source_link.uq_source, so pinning them keeps an employee-id
+    // lookup a point read instead of an index skip scan.
+    'default_system_id' => env('GPCAMI_SYSTEM_ID', 1),
+    'source_table' => 'employees',
+
     'columns' => [
         'id'         => 'identity_id',
         'uuid'       => 'identity_uuid',
@@ -49,6 +55,33 @@ return [
         'Exclusion links'   => 'Exclusion-list hits rolled up to an identity (candidate links) — potential OIG/SAM/state exclusions to review.',
     ],
 
+    /*
+     | Narrow column set for every list view (search results, review queue,
+     | account lens, exports).
+     |
+     | Never `SELECT *` for a list: a single gp_identity_profile row can carry
+     | >100MB of JSON rollups (identity 3 alone has a 69MB credentials blob), so
+     | a 500-row page of `*` is not a slow query, it is an out-of-memory crash.
+     | The rollups are loaded only on the one-identity profile view.
+     */
+    'list_columns' => [
+        'identity_id', 'identity_uuid', 'first_name', 'middle_name', 'last_name', 'suffix',
+        'date_of_birth', 'ssn_last_four', 'npi', 'dea_number', 'city', 'state',
+        'record_count', 'account_count', 'license_count', 'credential_count',
+        'exclusion_count', 'has_active_exclusion', 'has_active_board_action',
+        'confidence', 'last_updated',
+    ],
+
+    // Rows per page in the search results list.
+    'per_page' => 50,
+
+    // Hard cap on a CSV/JSON export, so a two-letter prefix search can't stream
+    // the whole hub to a browser.
+    'export_limit' => 10000,
+
+    // gp-cami API base for the docs-page playground (the hub app, not this one).
+    'api_base' => env('GPCAMI_API_BASE', 'http://127.0.0.1:8000'),
+
     // JSON rollup columns on gp_identity_profile shown on the profile page.
     'profile_json' => [
         'identifiers', 'addresses', 'licenses', 'credentials', 'exclusions',
@@ -56,4 +89,22 @@ return [
     ],
 
     'cache_ttl' => 60, // seconds for the stats board
+
+    // Wall-clock seconds allowed for a streamed export. Must exceed PHP's
+    // max_execution_time (30s by default) or the download is killed mid-stream by
+    // a fatal that no catch block can intercept, leaving a debug page inside the
+    // .csv. Finite on purpose so a runaway export still terminates.
+    'export_time_limit' => 300,
+
+    // Statement budget for an export, in milliseconds. Deliberately much larger
+    // than the interactive search budget: a capped 10k-row download is expected to
+    // take longer than a page view, and reusing the 15s page budget truncated real
+    // exports to nothing but an error marker.
+    'export_timeout_ms' => 120000,
+
+    // Seconds to remember whether a source match id is linked to an identity.
+    // The check is an unindexed ~3.21M-row scan (~2.24s), and one profile view
+    // asks for several match payloads, so without this the gate dominates the
+    // page. Link membership is stable within a viewing session.
+    'match_gate_ttl' => 300,
 ];

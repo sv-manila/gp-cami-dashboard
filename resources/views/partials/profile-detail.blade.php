@@ -27,7 +27,8 @@
 </table>
 
 @php
-    $basis = $basis ?? ['links' => [], 'link_total' => 0, 'by_key' => [], 'audit' => [], 'shared' => [],
+    $basis = ($basis ?? []) + ['links' => [], 'link_total' => 0, 'by_key' => [], 'audit' => [], 'shared' => [],
+        'conflicts' => [], 'basis_source' => null, 'basis_truncated' => false,
         'derive_skipped' => false, 'weakest' => null, 'needs_review' => 0, 'pinned' => 0, 'error' => null];
     $oversized = $oversized ?? [];
 
@@ -48,6 +49,9 @@
         'npi' => 'the same NPI', 'ssn' => 'the same Social Security number',
         'dea' => 'the same DEA number', 'upin' => 'the same UPIN',
         'mmis' => 'the same MMIS number', 'name + dob' => 'the same name and date of birth',
+        // Conflict labels reuse this map, so the plain-English phrasing has to
+        // read correctly after both "they all have …" and "they disagree on …".
+        'date of birth' => 'the same date of birth', 'name' => 'the same name',
         // match_key spellings, for the "matched at intake" sentence
         'ssn_hash' => 'the same Social Security number', 'dea_number' => 'the same DEA number',
         'license_registry' => 'the same license number', 'license' => 'the same license number',
@@ -84,7 +88,21 @@
                 <p>
                     <b>{{ number_format($total) }} employee records</b> were combined into this one person
                     @if ($basis['shared'])
-                        because they all have @foreach ($basis['shared'] as $label => $s)<b>{{ $sharedLabels[$label] ?? $label }}</b> ({{ $s['value'] }}){{ $loop->last ? '.' : ' and ' }}@endforeach
+                        {{-- basis_truncated means the shared keys were derived from a
+                             SAMPLE of members, not all of them, so "they all have" is a
+                             claim the data does not support. Identity 13332548 asserted
+                             1,342 records shared one name while the hub holds two
+                             distinct names among them. The flag was already plumbed
+                             through to here and simply never read. --}}
+                        @if ($basis['basis_truncated'])
+                            — every record that was checked shares
+                        @else
+                            because they all have
+                        @endif
+                        @foreach ($basis['shared'] as $label => $s)<b>{{ $sharedLabels[$label] ?? $label }}</b> ({{ $s['value'] }}){{ $loop->last ? '.' : ' and ' }}@endforeach
+                        @if ($basis['basis_truncated'])
+                            <span class="muted">The remaining records were not examined, so this is a sample, not a guarantee.</span>
+                        @endif
                     @elseif ($matched)
                         @php
                             $keyCounts = array_diff_key($basis['by_key'], ['new' => 1]);
@@ -113,6 +131,30 @@
                         Confidence: <b>{{ $certWord }}</b>@if ($certWhy) — {{ $certWhy }}@endif.
                     </p>
                 @endif
+            @endif
+
+            @if ($basis['conflicts'])
+                {{-- A shared key is why the records merged; a key the members
+                     disagree on is why they should not have. Two people who both
+                     have an NPI and do not have the same one are not one person. --}}
+                <p>
+                    <span class="badge excl">Conflicting details</span>
+                    {{-- Member counts here come from the same sample as the basis, so
+                         when it was truncated the counts are a lower bound. Reporting
+                         "2 members disagree" as fact was wrong on identity 3, where the
+                         sample saw 2 of 1,038 members carrying 14 distinct NPIs. --}}
+                    @if ($basis['basis_truncated'])
+                        Among the records checked, some disagree on
+                    @else
+                        Records inside this profile disagree on
+                    @endif
+                    @foreach ($basis['conflicts'] as $label => $c)<b>{{ $sharedLabels[$label] ?? $label }}</b> ({{ implode(' vs ', $c['values']) }}){{ $loop->last ? '.' : ', ' }}@endforeach
+                    That is a sign this grouping is wrong — see the
+                    <a href="{{ route('quality') }}">data quality page</a>.
+                    @if ($basis['basis_truncated'])
+                        <span class="muted">Counts are from a sample, so treat them as a minimum.</span>
+                    @endif
+                </p>
             @endif
 
             @if ($basis['needs_review'] || $basis['pinned'])
@@ -173,10 +215,22 @@
                             $rule = preg_match('/authority\[(.+?)\]/', (string) $a->rule_applied, $m)
                                 ? 'Came from the most trusted source (' . $m[1] . '), newest value'
                                 : ($a->rule_applied ?: '—');
+                            // Print no part of the ssn_hash. It is sha512(ssn + a key
+                            // shared with CAMI) over a 9-digit keyspace (~2^30), so a
+                            // prefix is not a redaction: 10 hex characters are 40 bits,
+                            // far more than enough to pin the one matching SSN and
+                            // recover it by brute force once the key is known. It is
+                            // also a stable cross-record identifier on its own. The API
+                            // withholds the field outright (IdentityProfileResource);
+                            // this table only needs to say that a value survived.
+                            $value = $a->surviving_value ?: null;
+                            if ($value !== null && $a->attribute_name === 'ssn_hash') {
+                                $value = 'present (not shown)';
+                            }
                         @endphp
                         <tr>
                             <td>{{ $attr }}</td>
-                            <td>{{ $a->surviving_value ?: '—' }}</td>
+                            <td>{{ $value ?: '—' }}</td>
                             <td>{{ $rule }}</td>
                         </tr>
                     @endforeach

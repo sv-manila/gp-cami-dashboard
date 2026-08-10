@@ -3,6 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {{-- The docs-page playground posts back to this app before proxying on to
+         the gp-cami API, so it needs the session's CSRF token. --}}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'gp-cami dashboard')</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <link rel="icon" href="{{ asset('sv-logo.png') }}">
@@ -16,6 +19,10 @@
         </div>
         <nav class="tabs">
             <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Dashboard</a>
+            <a href="{{ route('review') }}" class="{{ request()->routeIs('review*') ? 'active' : '' }}">Review</a>
+            <a href="{{ route('quality') }}" class="{{ request()->routeIs('quality') ? 'active' : '' }}">Quality</a>
+            <a href="{{ route('accounts') }}" class="{{ request()->routeIs('accounts*') ? 'active' : '' }}">Accounts</a>
+            <a href="{{ route('pipeline') }}" class="{{ request()->routeIs('pipeline') ? 'active' : '' }}">Pipeline</a>
             <a href="{{ route('features') }}" class="{{ request()->routeIs('features') ? 'active' : '' }}">Overview</a>
         </nav>
     </div>

@@ -37,23 +37,16 @@ class GpProfile extends Model
     }
 
     /**
-     * Exact first+last name search, newest first.
+     * The narrow column set every list view uses.
      *
-     * Plain `=` on purpose — the name columns are utf8mb4_unicode_ci, so the
-     * comparison is already case-insensitive. Wrapping them in LOWER() made the
-     * predicate non-sargable and forced a full scan of the 13M-row table
-     * (~128s per search); plain equality uses idx_name_dob (last_name,
-     * first_name, date_of_birth) and returns in ~0.03s.
+     * A single row here can carry >100MB of JSON rollups, so `SELECT *` over a
+     * page of results is an out-of-memory crash rather than a slow query. Only
+     * the one-identity profile view loads the rollups.
+     *
+     * Search predicates themselves live in App\Services\ProfileSearch.
      */
-    public function scopeByName($query, ?string $first, ?string $last)
+    public function scopeForList($query)
     {
-        $cols = config('gpcami.columns');
-        if ($first !== null && $first !== '') {
-            $query->where($cols['first_name'], '=', trim($first));
-        }
-        if ($last !== null && $last !== '') {
-            $query->where($cols['last_name'], '=', trim($last));
-        }
-        return $query->orderByDesc('last_updated');
+        return $query->select(config('gpcami.list_columns'));
     }
 }

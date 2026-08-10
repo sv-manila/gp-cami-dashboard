@@ -65,6 +65,7 @@
     <a href="#schema">Schema</a>
     <a href="#commands">Commands</a>
     <a href="#api">API</a>
+    <a href="#playground">Try it</a>
     <a href="#ssn">SSN &amp; security</a>
   </nav>
 
@@ -183,6 +184,24 @@
       <tr><td><code>gp:sync</code></td><td>Mode 2 — incremental; only rows changed since the watermark. Idempotent re-runs.</td></tr>
       <tr><td><code>gp:rebuild-profile</code></td><td>Re-materialize <code>gp_identity_profile</code> for one identity or all.</td></tr>
     </table>
+
+    <p class="lede" style="margin-top:18px;">Dashboard-side commands. These never write to the hub — the
+    results land on the dashboard's own database, because each one is a full scan of a 13M-row table:
+    a batch job's work, not a page load's.</p>
+    <table class="doc-t">
+      <tr><th>Command</th><th>What it does</th></tr>
+      <tr><td><code>gpdash:snapshot</code></td><td>Records today's table counts, the source-records-per-identity histogram, link states and score bands, the per-account rollup, and the over-merge candidates. Feeds the stat-card trends, <a href="{{ route('review') }}">Review</a>, <a href="{{ route('quality') }}">Quality</a>, <a href="{{ route('accounts') }}">Accounts</a> and <a href="{{ route('pipeline') }}">Pipeline</a>. <code>--only=</code> runs a subset.</td></tr>
+      <tr><td><code>gpdash:merge-basis</code></td><td>Derives why each multi-record identity's members are one person — and where they disagree. <code>gp_source_link.match_key</code> is stamped at first link and never rewritten by a later dedup merge, so the hub cannot answer this itself.</td></tr>
+      <tr><td><code>gpdash:index-advisor</code></td><td>Reports the hub indexes the newer pages want, with DDL. <code>--apply</code> creates them after a confirmation — the only command here that writes to gp-cami.</td></tr>
+    </table>
+    <pre class="code"># nightly
+php artisan gpdash:snapshot
+
+# just the parts the review queue needs
+php artisan gpdash:snapshot --only=links
+
+# precompute the merge basis for the 5000 largest identities
+php artisan gpdash:merge-basis --limit=5000</pre>
     <p class="lede" style="margin-top:14px;">Backfill options:</p>
     <div class="spec">
       <div class="kvrow"><span><code>--from-id</code> / <code>--to-id</code></span><span class="v">bound the source id range (partition / sanity run)</span></div>
@@ -233,6 +252,109 @@ php artisan gp:sync</pre>
   "prior_resolution": { ...steward decision, if any... } }</pre>
       <p style="font-size:.8rem;color:var(--ink-faint);margin:8px 0 0;">Qualifying status codes: 20,30,40,45,65,70,80,85,90 · excluded: 0,10,50,60,100.</p>
     </div>
+  </section>
+
+  {{-- ---------------- PLAYGROUND ---------------- --}}
+  <section class="doc" id="playground">
+    <p class="eyebrow">Integration</p>
+    <h2>Try it</h2>
+    <p class="lede">The two endpoints above, live. The call is proxied through this app rather than made
+    from the browser — the gp-cami app is a different origin with no CORS allowance for this one, and a
+    bearer token typed into a form should not travel in a request the page can be tricked into replaying.
+    Target: <code>{{ config('gpcami.api_base') }}</code> (set <code>GPCAMI_API_BASE</code> to change it).</p>
+
+    <div class="play-bar">
+      <select id="pg-endpoint">
+        <option value="identity-search">POST /api/v1/identity-search</option>
+        <option value="credential-search">POST /api/v1/credential-search</option>
+      </select>
+      <input type="password" id="pg-token" placeholder="Sanctum bearer token" autocomplete="off" style="min-width:280px;">
+      <button class="btn" id="pg-send" type="button">
+        <span class="spinner" aria-hidden="true"></span><span class="btn-label">Send</span>
+      </button>
+      <span class="play-status" id="pg-status"></span>
+    </div>
+
+    <div class="play">
+      <div>
+        <p class="eyebrow">Request body</p>
+        <textarea id="pg-body" spellcheck="false">{
+  "last_name": "Smith",
+  "first_name": "John",
+  "per_page": 5
+}</textarea>
+      </div>
+      <div>
+        <p class="eyebrow">Response</p>
+        <pre class="json" id="pg-out" style="min-height:150px;margin:0;">Nothing sent yet.</pre>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var btn = document.getElementById('pg-send');
+        var out = document.getElementById('pg-out');
+        var status = document.getElementById('pg-status');
+        var bodies = {
+          'identity-search': '{\n  "last_name": "Smith",\n  "first_name": "John",\n  "per_page": 5\n}',
+          'credential-search': '{\n  "last_name": "Smith",\n  "first_name": "John",\n  "registry": "CA-RN"\n}'
+        };
+
+        // Swapping endpoint swaps in that endpoint's example, but never
+        // overwrites a body the user has actually edited.
+        var pristine = true;
+        document.getElementById('pg-body').addEventListener('input', function () { pristine = false; });
+        document.getElementById('pg-endpoint').addEventListener('change', function (e) {
+          if (pristine) document.getElementById('pg-body').value = bodies[e.target.value];
+        });
+
+        btn.addEventListener('click', function () {
+          btn.classList.add('loading');
+          btn.disabled = true;
+          status.textContent = '';
+          status.className = 'play-status';
+          out.textContent = 'Sending…';
+
+          fetch("{{ route('api.try') }}", {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content
+            },
+            body: JSON.stringify({
+              endpoint: document.getElementById('pg-endpoint').value,
+              token: document.getElementById('pg-token').value,
+              body: document.getElementById('pg-body').value
+            })
+          })
+            .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, body: j }; }); })
+            .then(function (r) {
+              if (!r.ok) {
+                status.textContent = 'failed';
+                status.className = 'play-status bad';
+                out.textContent = r.body.error || JSON.stringify(r.body, null, 2);
+                return;
+              }
+              var upstream = r.body.status;
+              status.textContent = upstream + ' · ' + r.body.ms + 'ms';
+              status.className = 'play-status ' + (upstream >= 200 && upstream < 300 ? 'ok' : 'bad');
+              out.textContent = typeof r.body.body === 'string'
+                ? r.body.body
+                : JSON.stringify(r.body.body, null, 2);
+            })
+            .catch(function (e) {
+              status.textContent = 'error';
+              status.className = 'play-status bad';
+              out.textContent = e.message;
+            })
+            .finally(function () {
+              btn.classList.remove('loading');
+              btn.disabled = false;
+            });
+        });
+      })();
+    </script>
   </section>
 
   {{-- ---------------- SSN ---------------- --}}
