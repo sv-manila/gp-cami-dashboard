@@ -51,9 +51,14 @@ class SearchResolver
         // to work.
         $lastQualifier = null;
         $stripped = preg_replace_callback(
-            '/(?:^|\s)last\s*:\s*("[^"]+"|\S+)/i',
+            // Requires a non-empty value: a bare "last:" is not a qualifier, and
+            // treating it as one produced a surname search for the literal "last:".
+            '/(?:^|\s)last\s*:\s*("[^"]*[^"\s][^"]*"|[^\s"]+)/i',
             function ($m) use (&$lastQualifier) {
-                $lastQualifier = trim($m[1], '"');
+                $value = trim($m[1], '"');
+                // First qualifier wins; a second is left in place so it surfaces as
+                // an unparsed leftover rather than silently overriding the first.
+                $lastQualifier ??= $value;
 
                 return ' ';
             },
@@ -64,10 +69,17 @@ class SearchResolver
         if ($lastQualifier !== null) {
             $raw = trim(preg_replace('/\s+/', ' ', $stripped));
 
-            // `last:Smith` on its own is simply a surname search.
+            // `last:Smith` on its own is a surname search. Built directly rather
+            // than through the name parser: "last:Van Der Berg" would otherwise be
+            // split into first=Van / last=Berg, losing the surname the user pinned.
+            // The previous `+ ['last' => …]` was a no-op, because build() had
+            // already set that key.
             if ($raw === '') {
-                return $this->build('name', $lastQualifier, $query, true)
-                    + ['last' => $lastQualifier];
+                $criteria = $this->build('name', $lastQualifier, $query, true);
+                $criteria['last'] = $lastQualifier;
+                $criteria['first'] = null;
+
+                return $criteria;
             }
         }
 
@@ -85,15 +97,19 @@ class SearchResolver
     }
 
     /**
-     * Attach an explicit `last:` qualifier without letting it overwrite a surname
-     * the name parser already worked out from the term itself.
+     * Attach an explicit `last:` qualifier.
+     *
+     * The qualifier WINS over a surname the parser inferred from the term. The
+     * precedence was the other way round, which is backwards: "Smith last:Jones"
+     * searched Smith and silently ignored Jones, so the one part of the query the
+     * user was unambiguous about was the part discarded.
      *
      * @param  array<string,mixed>  $criteria
      * @return array<string,mixed>
      */
     private function withLast(array $criteria, ?string $last): array
     {
-        if ($last !== null && ($criteria['last'] ?? null) === null) {
+        if ($last !== null) {
             $criteria['last'] = $last;
         }
 

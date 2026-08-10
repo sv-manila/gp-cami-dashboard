@@ -6,6 +6,7 @@ use App\Models\GpProfile;
 use App\Models\MergeBasis;
 use App\Models\StatSnapshot;
 use App\Services\ProfileSearch;
+use App\Services\QueryInput;
 use App\Services\SearchInputException;
 use App\Services\SearchResolver;
 use Illuminate\Http\Request;
@@ -37,16 +38,19 @@ class DashboardController extends Controller
         $stats = $this->stats();
         $trends = StatSnapshot::series(StatSnapshot::TABLE_COUNT, 30);
 
-        $query = $this->queryFromRequest($request);
-        $searched = $query !== '' && $request->hasAny(['q', 'first_name', 'last_name']);
-
-        $criteria = $this->resolver->resolve($query);
-
         $empty = ['paginator' => null, 'matched_on' => null, 'error' => null, 'suggestions' => []];
 
+        // queryFromRequest is inside the guard too. It reads query parameters, and
+        // array input (?q[]=x) raises SearchInputException from QueryInput — before
+        // this it was an uncaught ErrorException and a 500 with a debug page.
         try {
+            $query = $this->queryFromRequest($request);
+            $searched = $query !== '' && $request->hasAny(['q', 'first_name', 'last_name']);
+            $criteria = $this->resolver->resolve($query);
             $opts = $this->optionsFromRequest($request, $criteria);
         } catch (SearchInputException $e) {
+            $query ??= '';
+            $criteria ??= $this->resolver->resolve('');
             // A rejected filter has to be reported, not dropped — see
             // normalizeDob(). Fall back to safe defaults so the page still renders
             // with the stats board and the message.
@@ -74,7 +78,8 @@ class DashboardController extends Controller
             'prefix'      => (bool) $opts['prefix'],
             'dob'         => $opts['dob'],
             'exclOnly'    => (bool) $opts['exclusions_only'],
-            'selected'    => $request->query('identity'),
+            // Coerced, not passed raw: ?identity[]=x reached the view as an array.
+            'selected'    => is_array($request->query('identity')) ? null : $request->query('identity'),
         ]);
     }
 
@@ -115,7 +120,17 @@ class DashboardController extends Controller
             // page into the .csv. Raise the wall clock for the download, but keep
             // it finite so a runaway still dies; the statement itself is separately
             // bounded by gpcami.export_timeout_ms.
-            set_time_limit((int) config('gpcami.export_time_limit', 300));
+            $budget = (int) config('gpcami.export_time_limit', 300);
+            set_time_limit($budget);
+
+            // Stop ourselves before PHP does. set_time_limit alone was not enough:
+            // the per-statement budget (export_timeout_ms) applies to EACH lazy page,
+            // so up to 20 pages of 120s is a 2400s ceiling against a 300s wall clock.
+            // Measured exports already reached 167.8s and 234.6s, so crossing 300s
+            // and dying on the uncatchable fatal was a matter of one slower run.
+            // Deadline leaves a margin to write the marker and close the file.
+            $deadline = microtime(true) + max(5, $budget - 15);
+            $timedOut = false;
 
             $handle = fopen('php://output', 'w');
 
@@ -124,31 +139,66 @@ class DashboardController extends Controller
             // Without a catch, the exception handler appended its debug page to
             // the download: a `.csv` that opened as 805KB of HTML behind a 200 and
             // zero data rows. Fail in-band, in the file's own format, and log it.
+            $written = 0;
+            $error = null;
+
+            // JSON is an OBJECT, not a bare array. The previous failure path wrote
+            // `[{…}], "error": "…"` after an open array, which is not valid JSON at
+            // all ("Extra data: line 4 column 2") — so a failed JSON export lost
+            // every row it had already streamed. Wrapping the rows in a envelope
+            // means the same file can carry both the data and the status.
             try {
                 if ($format === 'csv') {
                     fputcsv($handle, $columns);
                     foreach ($rows as $row) {
+                        if (microtime(true) > $deadline) {
+                            $timedOut = true;
+                            break;
+                        }
                         fputcsv($handle, array_map(fn ($c) => self::csvSafe($row->{$c}), $columns));
+                        $written++;
                     }
                 } else {
-                    // Streamed as a JSON array so a 10k-row export never has to be
-                    // held in memory in full.
-                    fwrite($handle, "[\n");
-                    $first = true;
+                    // Streamed so a 10k-row export is never held in memory in full.
+                    fwrite($handle, "{\n  \"data\": [\n");
                     foreach ($rows as $row) {
-                        fwrite($handle, ($first ? '' : ",\n") . json_encode($row->only($columns), JSON_UNESCAPED_SLASHES));
-                        $first = false;
+                        if (microtime(true) > $deadline) {
+                            $timedOut = true;
+                            break;
+                        }
+                        fwrite($handle, ($written ? ",\n" : '')
+                            . '    ' . json_encode($row->only($columns), JSON_UNESCAPED_SLASHES));
+                        $written++;
                     }
-                    fwrite($handle, "\n]\n");
+                    fwrite($handle, "\n  ],\n");
                 }
             } catch (\Throwable $e) {
-                Log::error('gp-cami export failed mid-stream', ['format' => $format, 'exception' => $e->getMessage()]);
+                $error = 'The hub query failed part-way through this export.';
+                Log::error('gp-cami export failed mid-stream', [
+                    'format' => $format, 'rows_written' => $written, 'exception' => $e->getMessage(),
+                ]);
+            }
 
-                if ($format === 'csv') {
-                    fputcsv($handle, ['# EXPORT FAILED — this file is incomplete. See the application log.']);
+            if ($timedOut) {
+                $error = 'This export hit its time limit before all rows were written.';
+                Log::warning('gp-cami export truncated at the time budget', [
+                    'format' => $format, 'rows_written' => $written, 'budget_seconds' => $budget,
+                ]);
+            }
+
+            // Status is stated in-band either way: the response line and headers
+            // went out before this callback ran, so a 200 cannot be retracted and a
+            // trailer header cannot be added. A consumer checks "complete".
+            if ($format === 'csv') {
+                if ($error) {
+                    fputcsv($handle, ['# EXPORT INCOMPLETE', $written, $error]);
                 } else {
-                    fwrite($handle, "\n], \"error\": \"Export failed and this file is incomplete. See the application log.\"\n");
+                    fputcsv($handle, ['# EXPORT COMPLETE', $written]);
                 }
+            } else {
+                fwrite($handle, '  "complete": '.($error ? 'false' : 'true').",\n");
+                fwrite($handle, '  "row_count": '.$written.",\n");
+                fwrite($handle, '  "error": '.json_encode($error)."\n}\n");
             }
 
             fclose($handle);
@@ -218,11 +268,11 @@ class DashboardController extends Controller
     private function queryFromRequest(Request $request): string
     {
         if ($request->filled('q')) {
-            return trim((string) $request->query('q'));
+            return QueryInput::string($request, 'q');
         }
 
-        $first = trim((string) $request->query('first_name', ''));
-        $last = trim((string) $request->query('last_name', ''));
+        $first = QueryInput::string($request, 'first_name');
+        $last = QueryInput::string($request, 'last_name');
 
         return trim($first . ' ' . $last);
     }
@@ -232,13 +282,13 @@ class DashboardController extends Controller
     {
         // An ssn4: term needs a surname from somewhere; accept it either as a
         // separate field or from the older last_name parameter.
-        $last = trim((string) $request->query('last', $request->query('last_name', '')));
+        $last = QueryInput::firstString($request, ['last', 'last_name']);
 
         return [
             'per_page'        => config('gpcami.per_page', 50),
-            'cursor'          => $request->query('cursor'),
+            'cursor'          => QueryInput::string($request, 'cursor') ?: null,
             'prefix'          => $request->boolean('prefix'),
-            'dob'             => self::normalizeDob($request->query('dob')),
+            'dob'             => self::normalizeDob(QueryInput::string($request, 'dob')),
             'exclusions_only' => $request->boolean('excl'),
             'last_name'       => $last ?: ($criteria['last'] ?? null),
         ];
@@ -294,19 +344,48 @@ class DashboardController extends Controller
             ->groupBy('label')
             ->map(fn ($g) => ['value' => (int) $g->first()->value, 'approx' => (bool) $g->first()->approx]);
 
+        // Today's snapshot, for the approx case below.
+        $todaySnapshot = StatSnapshot::query()
+            ->where('metric', StatSnapshot::TABLE_COUNT)
+            ->where('captured_on', now()->toDateString())
+            ->get()
+            ->keyBy('label');
+
         foreach ($stats as $label => $s) {
             // Only compare like with like. Today's number falls back to
-            // information_schema's estimate whenever the exact COUNT(*) exceeds
-            // its time cap, and on the 13M-row tables that is the normal path —
-            // so subtracting yesterday's exact snapshot from today's estimate
-            // reported swings of +279,953 / -430,369 / -428,236 on a hub that had
-            // not changed at all, next to a visibly flat sparkline.
-            $comparable = $s['count'] !== null
-                && empty($s['approx'])
-                && isset($previous[$label])
-                && ! $previous[$label]['approx'];
+            // information_schema's estimate whenever the exact COUNT(*) exceeds its
+            // time cap, and on the 13M-row tables that is the normal path — so
+            // subtracting yesterday's exact snapshot from today's estimate reported
+            // swings of +279,953 / -430,369 / -428,236 on a hub that had not
+            // changed at all, next to a visibly flat sparkline.
+            //
+            // Requiring both sides exact fixed that but overcorrected: the three
+            // big tables are ALWAYS approx, so they lost their delta permanently —
+            // and those are precisely the ones where a stalled rollup matters. So
+            // when the live number is an estimate, compare snapshot to snapshot
+            // instead. Both sides then come from the same measurement method, which
+            // is the actual requirement; exactness never was.
+            $prev = $previous[$label] ?? null;
 
-            $stats[$label]['delta'] = $comparable ? $s['count'] - $previous[$label]['value'] : null;
+            if ($prev === null) {
+                $stats[$label]['delta'] = null;
+
+                continue;
+            }
+
+            if ($s['count'] !== null && empty($s['approx']) && ! $prev['approx']) {
+                $stats[$label]['delta'] = $s['count'] - $prev['value'];
+
+                continue;
+            }
+
+            // Estimate today: use today's stored snapshot, which was captured the
+            // same way yesterday's was.
+            $today = $todaySnapshot[$label] ?? null;
+
+            $stats[$label]['delta'] = ($today && (bool) $today->approx === $prev['approx'])
+                ? (int) $today->value - $prev['value']
+                : null;
         }
 
         return $stats;
@@ -381,7 +460,11 @@ class DashboardController extends Controller
     {
         $tables = array_values(config('gpcami.stats_tables'));
         if (! in_array($table, $tables, true)) {
-            abort(404);
+            // Direct JsonResponse for the same reason as matchJson() below.
+            return response()->json([
+                'error' => 'not_found',
+                'message' => 'Unknown table.',
+            ], 404);
         }
 
         try {
@@ -413,7 +496,16 @@ class DashboardController extends Controller
         // 1..N and dump match payloads for people they never looked up, which is
         // both more data and more sensitive data than the hub itself exposes.
         if (! $this->matchIsLinkedToIdentity($kind, $id)) {
-            abort(404);
+            // An explicit JsonResponse, not abort(404). Routing /match/* through
+            // the JSON exception renderer (so its errors stop being HTML) means
+            // abort() now serialises the HttpException — and with APP_DEBUG on that
+            // is ~50 stack frames and absolute source paths, returned on the gate's
+            // most ordinary response. Returning the response directly never enters
+            // the exception renderer at all.
+            return response()->json([
+                'error' => 'not_found',
+                'message' => "No $kind match with id $id is linked to an identity.",
+            ], 404);
         }
 
         try {

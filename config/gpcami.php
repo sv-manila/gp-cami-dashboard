@@ -100,7 +100,11 @@ return [
     // than the interactive search budget: a capped 10k-row download is expected to
     // take longer than a page view, and reusing the 15s page budget truncated real
     // exports to nothing but an error marker.
-    'export_timeout_ms' => 120000,
+    // Per-statement, and it applies to EVERY lazy page, not to the export as a
+    // whole — 20 pages at 120s would be a 2400s ceiling under a 300s wall clock.
+    // Kept well below export_time_limit so one slow page cannot consume the whole
+    // budget; the controller also stops at its own deadline as a backstop.
+    'export_timeout_ms' => 30000,
 
     // Seconds to remember whether a source match id is linked to an identity.
     // The check is an unindexed ~3.21M-row scan (~2.24s), and one profile view

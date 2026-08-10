@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\AccountRollup;
 use App\Models\GpProfile;
+use App\Services\QueryInput;
+use App\Services\SearchInputException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -28,9 +30,20 @@ class AccountController extends Controller
 
     public function index(Request $request)
     {
+        try {
+            return $this->renderIndex($request);
+        } catch (SearchInputException $e) {
+            return response($e->getMessage(), 422);
+        }
+    }
+
+    private function renderIndex(Request $request)
+    {
         $accounts = AccountRollup::query()
             ->when($request->filled('q'), function ($q) use ($request) {
-                $term = trim((string) $request->query('q'));
+                // QueryInput, not a raw cast: ?q[]=x raised an uncaught
+                // ErrorException and rendered a debug page with a 500.
+                $term = QueryInput::string($request, 'q');
                 // Escape LIKE metacharacters: an unescaped '%' or '_' silently
                 // turns a filter into a wildcard and matches the wrong accounts.
                 $like = addcslashes($term, '%_\\');

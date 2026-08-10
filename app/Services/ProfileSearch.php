@@ -19,8 +19,16 @@ use Illuminate\Support\Facades\Log;
  */
 class ProfileSearch
 {
-    /** Web-request budget for an interactive search, in milliseconds. */
-    private const TIMEOUT_MS = 15000;
+    /**
+     * Web-request budget for an interactive search, in milliseconds.
+     *
+     * 8s, not 15s. A cold dashboard already spends ~7.5s on the stats board, so a
+     * 15s search budget put a single request at ~22s against PHP's 30s limit — and
+     * exceeding that is the uncatchable fatal this hint exists to prevent. It is
+     * also 15s of unauthenticated 13.6M-row scanning per request. A search that
+     * cannot answer in 8s needs narrowing, which is what explain() tells the user.
+     */
+    private const TIMEOUT_MS = 8000;
 
     /** Cap on identity ids collected from a lookup table before hydrating. */
     private const MAX_IDS = 2000;
@@ -135,6 +143,18 @@ class ProfileSearch
                 ];
 
             case 'ssn4':
+                // Validate the term rather than querying whatever is left over.
+                // Only one prefix and one qualifier are parsed, so a trailing token
+                // ("ssn4:1234 last:Smith extra") stayed in the term as "1234 extra"
+                // and matched nothing — a silent empty result that reads exactly
+                // like "this person is not in the hub".
+                if (! preg_match('/^\d{4}$/', $criteria['term'])) {
+                    throw new SearchInputException(
+                        'An SSN last-four search takes exactly four digits, for example "ssn4:6789 last:Smith". '
+                        .'Received: "'.$criteria['term'].'".',
+                    );
+                }
+
                 $last = $opts['last_name'] ?? null;
                 if (! $last) {
                     throw new SearchInputException(

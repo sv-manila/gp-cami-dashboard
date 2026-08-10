@@ -99,12 +99,54 @@ class SearchResolverTest extends TestCase
         $this->assertSame('Smith', $out['last']);
     }
 
-    public function test_last_qualifier_does_not_override_a_parsed_surname(): void
+    public function test_a_parsed_surname_is_used_when_no_qualifier_is_given(): void
     {
-        // A name term already yields a surname; the qualifier must not clobber it.
         $out = $this->resolve('Adkins, Paula');
 
         $this->assertSame('Adkins', $out['last']);
+        $this->assertSame('Paula', $out['first']);
+    }
+
+    /**
+     * Precedence: the explicit qualifier WINS. It was the other way round, so
+     * "Smith last:Jones" searched Smith and silently discarded Jones — throwing
+     * away the one part of the query the user was unambiguous about.
+     */
+    public function test_explicit_qualifier_beats_an_inferred_surname(): void
+    {
+        $this->assertSame('Jones', $this->resolve('Smith last:Jones')['last']);
+        $this->assertSame("O'Brien", $this->resolve("x last:O'Brien")['last']);
+    }
+
+    /**
+     * A quoted multi-word surname given on its own must not go through the name
+     * parser, which split "Van Der Berg" into first=Van / last=Berg.
+     */
+    public function test_quoted_qualifier_alone_keeps_the_whole_surname(): void
+    {
+        $out = $this->resolve('last:"Van Der Berg"');
+
+        $this->assertSame('Van Der Berg', $out['last']);
+        $this->assertNull($out['first']);
+    }
+
+    public function test_bare_qualifier_with_no_value_is_not_treated_as_one(): void
+    {
+        // 'last:' has no value, so it is not a qualifier; it must not be read as a
+        // surname search for an empty string (which would match nothing at random).
+        $out = $this->resolve('last:');
+
+        $this->assertSame('name', $out['type']);
+        $this->assertNotSame('', $out['last'] ?? null);
+    }
+
+    public function test_first_qualifier_wins_and_the_second_stays_visible(): void
+    {
+        $out = $this->resolve('last:Smith last:Jones');
+
+        // Silently honouring the last one would hide that the query was ambiguous.
+        $this->assertSame('Smith', $out['last']);
+        $this->assertStringContainsString('last:Jones', $out['term']);
     }
 
     public function test_raw_is_preserved_for_the_export_filename_and_ui_echo(): void
