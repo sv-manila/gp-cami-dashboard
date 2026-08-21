@@ -19,6 +19,7 @@ class GpProfile extends Model
 
     // JSON rollup columns decoded automatically.
     protected $casts = [
+        'identifiers'    => 'array',
         'addresses'      => 'array',
         'licenses'       => 'array',
         'credentials'    => 'array',
@@ -35,16 +36,17 @@ class GpProfile extends Model
         throw new \RuntimeException('gp-cami dashboard is read-only.');
     }
 
-    /** Exact first+last name search (case-insensitive), newest first. */
-    public function scopeByName($query, ?string $first, ?string $last)
+    /**
+     * The narrow column set every list view uses.
+     *
+     * A single row here can carry >100MB of JSON rollups, so `SELECT *` over a
+     * page of results is an out-of-memory crash rather than a slow query. Only
+     * the one-identity profile view loads the rollups.
+     *
+     * Search predicates themselves live in App\Services\ProfileSearch.
+     */
+    public function scopeForList($query)
     {
-        $cols = config('gpcami.columns');
-        if ($first !== null && $first !== '') {
-            $query->whereRaw("LOWER({$cols['first_name']}) = ?", [mb_strtolower(trim($first))]);
-        }
-        if ($last !== null && $last !== '') {
-            $query->whereRaw("LOWER({$cols['last_name']}) = ?", [mb_strtolower(trim($last))]);
-        }
-        return $query->orderByDesc('last_updated');
+        return $query->select(config('gpcami.list_columns'));
     }
 }

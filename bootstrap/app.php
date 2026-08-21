@@ -15,7 +15,18 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // This callback REPLACES Laravel's default rule rather than adding to it,
+        // and no route in this app lives under `api/*` — `api-try` has no slash —
+        // so the previous version matched nothing and, worse, discarded the
+        // built-in expectsJson() check. Every JSON endpoint then rendered its
+        // errors as HTML: /api-try validation failures came back as a 302 redirect
+        // page, so the docs page's `res.json()` threw instead of showing the
+        // validation message, and /match + /stats/exact 404s were text/html.
+        //
+        // Keep expectsJson() and name the JSON routes explicitly, because the
+        // fetch() calls in welcome.blade.php do not all send an Accept header.
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->expectsJson()
+                || $request->is('api-try', 'match/*', 'stats/exact/*'),
         );
     })->create();
