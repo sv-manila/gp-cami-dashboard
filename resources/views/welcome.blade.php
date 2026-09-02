@@ -43,6 +43,79 @@
     background:var(--ok);border-radius:5px;padding:2px 8px;margin-right:8px;}
   table.doc-t{margin-top:8px;}
   table.doc-t td:first-child code{white-space:nowrap;}
+  /* ---- "Start here" orientation section ---------------------------------
+     Everything below the fold on this page is reference for people who already
+     know the domain. This section is the part that assumes nothing, so it leans
+     on diagrams rather than prose: the shape of the problem is much easier to
+     see than to read.
+
+     The SVGs are styled through classes rather than fill="" attributes so the
+     one drawing serves both themes -- the palette below is redefined under
+     prefers-color-scheme:dark and the diagrams follow it. */
+  .dgm{width:100%;height:auto;display:block;}
+  .dgm-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px;box-shadow:var(--shadow);margin:14px 0 0;overflow-x:auto;}
+  @media (max-width:760px){.dgm{min-width:660px;}}
+  .dgm-cap{font-size:.8rem;color:var(--ink-faint);margin:10px 2px 0;}
+  /* diagram palette */
+  .d-card{fill:var(--surface-2);stroke:var(--line);}
+  .d-card-src{fill:var(--surface-2);stroke:var(--line);stroke-dasharray:3 3;}
+  .d-gold{fill:var(--surface);stroke:var(--orange);stroke-width:2;}
+  .d-hub{fill:var(--surface-2);stroke:var(--navy);}
+  @media (prefers-color-scheme:dark){.d-hub{stroke:var(--link);}}
+  .d-t{fill:var(--ink);font-family:var(--sans);font-size:15px;}
+  .d-t-sm{fill:var(--ink-soft);font-family:var(--sans);font-size:13px;}
+  .d-t-mono{fill:var(--ink-soft);font-family:var(--mono);font-size:12.5px;}
+  .d-t-key{fill:var(--orange);font-family:var(--mono);font-size:12.5px;font-weight:700;}
+  .d-t-hd{fill:var(--ink-faint);font-family:var(--mono);font-size:11.5px;
+    letter-spacing:.12em;text-transform:uppercase;font-weight:700;}
+  .d-arrow{stroke:var(--ink-faint);stroke-width:1.6;fill:none;}
+  .d-arrowhead{fill:var(--ink-faint);}
+  .d-accent{fill:var(--orange);}
+  .d-rule{stroke:var(--line);stroke-width:1;}
+
+  /* three pillars */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px;}
+  .pillar{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 16px;box-shadow:var(--shadow);border-top:3px solid var(--orange);}
+  .pillar h4{margin:0 0 4px;font-size:.95rem;color:var(--navy);}
+  @media (prefers-color-scheme:dark){.pillar h4{color:var(--ink);}}
+  .pillar p{margin:0;font-size:.82rem;color:var(--ink-soft);}
+  @media (max-width:760px){.pillars{grid-template-columns:1fr;}}
+
+  /* glossary: a lookup grid, not a paragraph */
+  .gloss{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:10px;margin-top:14px;}
+  .gterm{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--gold);
+    border-radius:8px;padding:10px 12px;}
+  .gterm b{display:block;font-family:var(--mono);font-size:.82rem;color:var(--navy);margin-bottom:2px;}
+  @media (prefers-color-scheme:dark){.gterm b{color:var(--ink);}}
+  .gterm span{font-size:.79rem;color:var(--ink-soft);line-height:1.45;}
+
+  /* at-a-glance counts */
+  .glance{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px;}
+  .gstat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px 14px;box-shadow:var(--shadow);}
+  .gstat .n{font-size:1.25rem;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;
+    letter-spacing:-.02em;}
+  @media (prefers-color-scheme:dark){.gstat .n{color:var(--ink);}}
+  .gstat .l{font-size:.72rem;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.7px;
+    font-weight:700;margin-top:2px;}
+  /* one card per command: name, what it does, then its options */
+  .cmd{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;box-shadow:var(--shadow);margin-bottom:14px;}
+  .cmd h4{margin:0 0 7px;font-family:var(--mono);font-size:.92rem;color:var(--navy);letter-spacing:-.01em;}
+  @media (prefers-color-scheme:dark){.cmd h4{color:var(--ink);}}
+  .cmd > p{margin:0;font-size:.85rem;color:var(--ink-soft);max-width:86ch;}
+  .cmd .opts{margin-top:12px;}
+  .optrow{display:grid;grid-template-columns:210px 1fr;gap:14px;padding:6px 0;
+    border-top:1px solid var(--line);font-size:.82rem;}
+  .optrow:first-child{border-top:none;}
+  .optrow > code{white-space:nowrap;justify-self:start;}
+  .optrow > span{color:var(--ink-soft);}
+  /* the orchestrator's own sub-worker flags — documented so they are not mistaken
+     for knobs, greyed so they are not mistaken for knobs worth turning */
+  .optrow.internal > span,.optrow.internal > code{color:var(--ink-faint);}
+  @media (max-width:640px){.optrow{grid-template-columns:1fr;gap:3px;}}
   .flow{font-family:var(--mono);font-size:12px;color:var(--ink-soft);background:var(--surface-2);
     border:1px solid var(--line);border-radius:8px;padding:10px 14px;overflow:auto;}
   @media (max-width:820px){.pipe{grid-template-columns:1fr 1fr;}.grid2{grid-template-columns:1fr;}}
@@ -59,6 +132,7 @@
   </div>
 
   <nav class="docnav">
+    <a href="#start">Start here</a>
     <a href="#pipeline">Pipeline</a>
     <a href="#resolution">Resolution logic</a>
     <a href="#survivorship">Survivorship</a>
@@ -68,6 +142,202 @@
     <a href="#playground">Try it</a>
     <a href="#ssn">SSN &amp; security</a>
   </nav>
+
+  {{-- ---------------- START HERE ---------------- --}}
+  <section class="doc" id="start">
+    <p class="eyebrow">Start here</p>
+    <h2>One person, one identity</h2>
+    <p class="lede">The same nurse turns up again and again across <code>streamline_local</code> &mdash;
+    under different clients, on different lists, a maiden name here, a typo there, a licence that moved
+    state. Each row is a separate record. None of them knows about the others.</p>
+
+    <div class="dgm-wrap">
+      <svg class="dgm" viewBox="0 0 880 288" role="img"
+           aria-label="Four separate source records for the same nurse — differing in surname, spelling and licence state but sharing an SSN hash and NPI — resolve into one golden identity that carries her licences, credentials and exclusions.">
+        <text x="0" y="14" class="d-t-hd">4 source records</text>
+        <text x="368" y="14" class="d-t-hd">resolve</text>
+        <text x="566" y="14" class="d-t-hd">1 golden identity</text>
+
+        {{-- the four raw rows: same person, four spellings --}}
+        <g>
+          <rect x="0" y="28" width="300" height="46" rx="7" class="d-card-src"/>
+          <text x="14" y="49" class="d-t">Smith, Jane A.</text>
+          <text x="14" y="66" class="d-t-mono">acct 41 &middot; NPI 1234567893</text>
+
+          <rect x="0" y="82" width="300" height="46" rx="7" class="d-card-src"/>
+          <text x="14" y="103" class="d-t">Doe, Jane</text>
+          <text x="14" y="120" class="d-t-mono">acct 77 &middot; maiden name</text>
+
+          <rect x="0" y="136" width="300" height="46" rx="7" class="d-card-src"/>
+          <text x="14" y="157" class="d-t">Smtih, Jane</text>
+          <text x="14" y="174" class="d-t-mono">acct 41 &middot; typo</text>
+
+          <rect x="0" y="190" width="300" height="46" rx="7" class="d-card-src"/>
+          <text x="14" y="211" class="d-t">Smith, Janet</text>
+          <text x="14" y="228" class="d-t-mono">acct 12 &middot; licence now TX</text>
+        </g>
+
+        {{-- what they share is what binds them --}}
+        <text x="0" y="262" class="d-t-sm">Shared between them:</text>
+        <text x="132" y="262" class="d-t-key">ssn_hash</text>
+        <text x="196" y="262" class="d-t-sm">and</text>
+        <text x="226" y="262" class="d-t-key">NPI</text>
+
+        {{-- arrows into the engine --}}
+        <path d="M300 51 H 330 Q342 51 342 63 V 120" class="d-arrow"/>
+        <path d="M300 105 H 342" class="d-arrow"/>
+        <path d="M300 159 H 330 Q342 159 342 147 V 132" class="d-arrow"/>
+        <path d="M300 213 H 330 Q342 213 342 201 V 132" class="d-arrow"/>
+
+        {{-- the engine --}}
+        <rect x="352" y="96" width="150" height="60" rx="7" class="d-hub"/>
+        <text x="427" y="121" class="d-t" text-anchor="middle">Resolution</text>
+        <text x="427" y="140" class="d-t-sm" text-anchor="middle">Pass A, then Pass B</text>
+
+        <path d="M502 126 H 552" class="d-arrow"/>
+        <polygon points="552,121 564,126 552,131" class="d-arrowhead"/>
+
+        {{-- the one identity that comes out --}}
+        <rect x="566" y="28" width="314" height="208" rx="9" class="d-gold"/>
+        <text x="584" y="56" class="d-t" style="font-weight:800;">Jane Smith</text>
+        <text x="584" y="76" class="d-t-mono">identity_uuid &middot; canonical name + DOB</text>
+        <line x1="584" y1="90" x2="862" y2="90" class="d-rule"/>
+
+        <text x="584" y="112" class="d-t-hd">rolled up</text>
+        <circle cx="590" cy="132" r="3" class="d-accent"/>
+        <text x="602" y="137" class="d-t-sm">2 licences (CA, TX) &middot; 4 aliases</text>
+        <circle cx="590" cy="156" r="3" class="d-accent"/>
+        <text x="602" y="161" class="d-t-sm">credential matches from every account</text>
+        <circle cx="590" cy="180" r="3" class="d-accent"/>
+        <text x="602" y="185" class="d-t-sm">exclusion hits, flagged for review</text>
+        <circle cx="590" cy="204" r="3" class="d-accent"/>
+        <text x="602" y="209" class="d-t-sm">the 4 source rows, still traceable</text>
+      </svg>
+    </div>
+    <p class="dgm-cap">Nothing is thrown away: every source row stays linked to the identity it resolved
+    into, so any value on the profile can be traced back to the record it came from.</p>
+
+    <div class="pillars">
+      <div class="pillar">
+        <h4>Resolve</h4>
+        <p>Decide which raw rows are the same human being. Exact keys first, similarity scoring for
+        the rest.</p>
+      </div>
+      <div class="pillar">
+        <h4>Enrich</h4>
+        <p>Hang everything known about that person off the one identity &mdash; aliases, licences,
+        addresses, credentials, exclusions.</p>
+      </div>
+      <div class="pillar">
+        <h4>Reuse</h4>
+        <p>A decision a reviewer makes once is remembered, and comes back with the person the next
+        time anyone searches &mdash; under any account.</p>
+      </div>
+    </div>
+
+    <h2 style="margin-top:30px;">Where the pieces live</h2>
+    <p class="lede">Two applications. <b>gp-cami</b> builds and serves the hub; <b>gp-cami-dashboard</b>
+    &mdash; this app &mdash; only looks at it.</p>
+
+    <div class="dgm-wrap">
+      <svg class="dgm" viewBox="0 0 880 250" role="img"
+           aria-label="streamline_local is read through a connector into staging; the resolution engine writes the golden_profile hub; gp-cami serves it to CAMI over a REST API, while the read-only gp-cami-dashboard reads the hub directly.">
+        {{-- source --}}
+        <text x="0" y="14" class="d-t-hd">source &middot; read-only</text>
+        <rect x="0" y="26" width="150" height="58" rx="7" class="d-card"/>
+        <text x="75" y="50" class="d-t" text-anchor="middle">CAMI</text>
+        <text x="75" y="70" class="d-t-mono" text-anchor="middle">streamline_local</text>
+
+        <path d="M150 55 H 196" class="d-arrow"/>
+        <polygon points="196,50 208,55 196,60" class="d-arrowhead"/>
+        <text x="152" y="44" class="d-t-sm">connector</text>
+
+        {{-- gp-cami --}}
+        <rect x="216" y="0" width="404" height="164" rx="10" class="d-hub" fill="none"/>
+        <text x="232" y="20" class="d-t-hd">gp-cami &middot; writes the hub</text>
+
+        <rect x="232" y="32" width="122" height="52" rx="7" class="d-card"/>
+        <text x="293" y="54" class="d-t-sm" text-anchor="middle">staging</text>
+        <text x="293" y="72" class="d-t-mono" text-anchor="middle">stg_person</text>
+
+        <path d="M354 58 H 386" class="d-arrow"/>
+        <polygon points="386,53 398,58 386,63" class="d-arrowhead"/>
+
+        <rect x="398" y="32" width="122" height="52" rx="7" class="d-hub"/>
+        <text x="459" y="54" class="d-t-sm" text-anchor="middle">resolution</text>
+        <text x="459" y="72" class="d-t-sm" text-anchor="middle">engine</text>
+
+        <path d="M459 84 V 104" class="d-arrow"/>
+        <polygon points="454,104 459,116 464,104" class="d-arrowhead"/>
+
+        <rect x="336" y="116" width="248" height="36" rx="7" class="d-gold"/>
+        <text x="460" y="139" class="d-t-mono" text-anchor="middle">golden_profile hub</text>
+
+        {{-- API out to CAMI --}}
+        <path d="M584 134 H 648 Q660 134 660 122 V 74" class="d-arrow"/>
+        <polygon points="655,74 660,62 665,74" class="d-arrowhead"/>
+        <rect x="596" y="26" width="128" height="36" rx="7" class="d-card"/>
+        <text x="660" y="49" class="d-t-mono" text-anchor="middle">REST /api/v1</text>
+        <path d="M724 44 H 772" class="d-arrow"/>
+        <polygon points="772,39 784,44 772,49" class="d-arrowhead"/>
+        <text x="790" y="49" class="d-t-sm">CAMI</text>
+
+        {{-- dashboard --}}
+        <path d="M460 152 V 186" class="d-arrow" stroke-dasharray="4 3"/>
+        <polygon points="455,186 460,198 465,186" class="d-arrowhead"/>
+        <rect x="300" y="198" width="320" height="46" rx="7" class="d-card"/>
+        <text x="460" y="220" class="d-t" text-anchor="middle">gp-cami-dashboard</text>
+        <text x="460" y="237" class="d-t-sm" text-anchor="middle">this app &middot; reads only, never writes</text>
+      </svg>
+    </div>
+    <p class="dgm-cap">The engine only ever sees staging, never a source&rsquo;s own schema &mdash; so adding
+    a second source database later is a connector and a config row, not a rebuild.</p>
+
+    <h2 style="margin-top:30px;">The vocabulary</h2>
+    <p class="lede">Terms used throughout the rest of this page.</p>
+
+    <div class="gloss">
+      <div class="gterm"><b>CAMI</b><span>The existing Streamline Verify credentialing application, and the
+        source of every record here. Its database is <code>streamline_local</code>.</span></div>
+      <div class="gterm"><b>golden identity</b><span>One resolved real person, and the record all the
+        raw rows for them point at.</span></div>
+      <div class="gterm"><b>credential</b><span>A professional licence or registration held by a person
+        and checked against an issuing registry.</span></div>
+      <div class="gterm"><b>exclusion</b><span>A hit on a list of people barred from working in
+        federally funded healthcare. The thing customers are really buying.</span></div>
+      <div class="gterm"><b>registry</b><span>The issuing body a credential is verified against &mdash;
+        a state licensing board, say.</span></div>
+      <div class="gterm"><b>steward</b><span>A person who reviews the matches the engine was not
+        confident enough to decide alone. See <a href="{{ route('review') }}">Review</a>.</span></div>
+      <div class="gterm"><b>NPI</b><span>National Provider Identifier &mdash; the 10-digit US id for a
+        healthcare provider. A strong match key.</span></div>
+      <div class="gterm"><b>DEA &middot; UPIN</b><span>Two more provider ids: a Drug Enforcement Administration
+        controlled-substance registration, and the retired Unique Physician Identification
+        Number.</span></div>
+      <div class="gterm"><b>LEIE &middot; SAM</b><span>The two federal exclusion lists: the OIG&rsquo;s List of Excluded
+        Individuals and Entities, and the System for Award Management.</span></div>
+      <div class="gterm"><b>NPPES</b><span>National Plan and Provider Enumeration System &mdash; the federal registry
+        behind NPI numbers. High authority for names and addresses.</span></div>
+      <div class="gterm"><b>MMIS</b><span>Medicaid Management Information System &mdash; a state Medicaid provider id.
+        Multi-valued: one person can hold several.</span></div>
+      <div class="gterm"><b>Jaro-Winkler</b><span>A string similarity measure (0&ndash;1) that rates names alike even
+        when spelled differently. Powers Pass&nbsp;B.</span></div>
+    </div>
+
+    @if (! empty($glance['counts'] ?? []))
+      <h2 style="margin-top:30px;">The hub today</h2>
+      <p class="lede">Last recorded {{ $glance['as_of'] }} by <code>gpdash:snapshot</code>. Live numbers
+        are on the <a href="{{ route('dashboard') }}">Dashboard</a>.</p>
+      <div class="glance">
+        @foreach ($glance['counts'] as $label => $c)
+          <div class="gstat">
+            <div class="n">{{ $c['approx'] ? '≈ ' : '' }}{{ number_format($c['value']) }}</div>
+            <div class="l">{{ $label }}</div>
+          </div>
+        @endforeach
+      </div>
+    @endif
+  </section>
 
   {{-- ---------------- PIPELINE ---------------- --}}
   <section class="doc" id="pipeline">
@@ -106,7 +376,7 @@
         <div class="kvrow"><span>UPIN</span><span class="v">0.99</span></div>
         <div class="kvrow"><span>License # + cert. state</span><span class="v">0.99</span></div>
         <div class="kvrow"><span>Name + DOB</span><span class="v">0.95</span></div>
-        <p style="margin:10px 0 0;font-size:.8rem;color:var(--ink-faint);">DEA &amp; MMIS are multi-valued (from <code>employee_additional_info</code>) and merge via dedup.</p>
+        <p style="margin:10px 0 0;font-size:.8rem;color:var(--ink-faint);">DEA &amp; MMIS are multi-valued (from <code>employee_additional_info</code>) and merge via dedup. <b>The <code>ssn_hash</code> tier is guarded:</b> CAMI source data carries filler SSNs (all-zero, sequential, repeated digits), and every person sharing one hashes identically, so an unguarded tier would collapse them into a single identity. Known placeholders are excluded by value, and any hash carried by more than <b>3</b> distinct people upstream is treated as filler and skipped &mdash; which catches the ones not on the list. Measured on the current hub: 17 filler hashes across 9,164 people, the worst carried by 9,072 of them.</p>
       </div>
       <div class="spec">
         <h4>Pass B — probabilistic (Jaro-Winkler)</h4>
@@ -116,7 +386,9 @@
         <div class="kvrow"><span>Provider type</span><span class="v">0.08</span></div>
         <div class="kvrow"><span>Shared exclusion</span><span class="v">0.07</span></div>
         <div class="kvrow"><span>ZIP</span><span class="v">0.05</span></div>
-        <p style="margin:10px 0 0;font-size:.8rem;color:var(--ink-faint);">Auto-merge ≥ <b>0.92</b>; review band <b>0.75–0.92</b>; below → new. Hard-no: conflicting DOB, or two different valid NPIs. Blocks capped at 2000 (oversized flagged, never truncated).</p>
+        <p style="margin:10px 0 0;font-size:.8rem;color:var(--ink-faint);">Auto-merge &ge; <b>0.92</b>; review band <b>0.75&ndash;0.92</b>; below &rarr; new. Hard-no: conflicting DOB, or two different valid NPIs. Blocks capped at 2000 (oversized flagged, never truncated).</p>
+        <div class="notice" style="margin-top:10px;font-size:.8rem;">
+          <b>Configured &ne; in effect.</b> <code>provider_type</code> (0.08) is declared but <b>not implemented</b> &mdash; <code>stg_person</code> carries no provider/entity-type column, so that weight never fires. The five weights that do fire sum to exactly <b>0.92</b>, which <em>is</em> <code>auto_merge_at</code> &mdash; so an automatic merge needs a flawless score on every remaining signal at once (name Jaro-Winkler 1.0 <em>and</em> exact DOB <em>and</em> address <em>and</em> ZIP <em>and</em> a shared exclusion). In practice Pass&nbsp;B lands in the review band or below, and the queue on <a href="{{ route('review') }}">Review</a> is where those decisions actually get made. The resolver logs a warning once per process while this holds. Rebalancing the weights (or lowering the threshold) changes merge behaviour across the whole hub, so it is left to Phase&nbsp;3 calibration against labeled data rather than patched here.</div>
       </div>
     </div>
   </section>
@@ -160,6 +432,7 @@
       <tr><td><code>gp_source_link</code></td><td>Each source row bound to an identity; match_method / key / score / state, pinned flag.</td></tr>
       <tr><td><code>gp_identity_identifier</code></td><td>Multi-valued identifiers (DEA, MMIS) — match keys.</td></tr>
       <tr><td><code>gp_license</code> / <code>gp_address</code></td><td>One-to-many licenses (number/state/board) and addresses.</td></tr>
+      <tr><td><code>gp_identity_alias</code></td><td>Searchable index of alias names (<code>alias_name</code> + <code>alias_part</code>) &mdash; what <code>identity-search</code> matches aliases against. The <code>aliases</code> JSON on the profile cannot be indexed for this, so the index is a table.</td></tr>
       <tr><td><code>gp_identity_credential</code></td><td>credential_matches rolled up to an identity (confirmed links).</td></tr>
       <tr><td><code>gp_identity_exclusion</code></td><td>exclusion matches rolled up (candidate links).</td></tr>
       <tr><td><code>gp_board_action</code></td><td>Disciplinary / board actions.</td></tr>
@@ -178,56 +451,156 @@
   <section class="doc" id="commands">
     <p class="eyebrow">Operations</p>
     <h2>Commands</h2>
-    <table class="doc-t">
-      <tr><th>Command</th><th>What it does</th></tr>
-      <tr><td><code>gp:backfill</code></td><td>Mode 1 — the whole backlog in one set-based command (stage→index→resolve→enrich→dedup→rollup→finalize). Parallel staging + sharded finalize, resumable.</td></tr>
-      <tr><td><code>gp:sync</code></td><td>Mode 2 — incremental; only rows changed since the watermark. Idempotent re-runs.</td></tr>
-      <tr><td><code>gp:rebuild-profile</code></td><td>Re-materialize <code>gp_identity_profile</code> for one identity or all.</td></tr>
-    </table>
+    <p class="lede">Seven Artisan commands in two groups. The <code>gp:*</code> commands live in the
+    <b>gp-cami</b> app and are the only things that write to the <code>golden_profile</code> hub. The
+    <code>gpdash:*</code> commands live in <b>this</b> app, read the hub and write their results to the
+    dashboard&rsquo;s own database &mdash; each is a full scan of a multi-million-row table, which is a batch
+    job&rsquo;s work rather than a page load&rsquo;s. One of them can write to the hub, and says so.</p>
 
-    <p class="lede" style="margin-top:18px;">Dashboard-side commands. These never write to the hub — the
-    results land on the dashboard's own database, because each one is a full scan of a 13M-row table:
-    a batch job's work, not a page load's.</p>
-    <table class="doc-t">
-      <tr><th>Command</th><th>What it does</th></tr>
-      <tr><td><code>gpdash:snapshot</code></td><td>Records today's table counts, the source-records-per-identity histogram, link states and score bands, the per-account rollup, and the over-merge candidates. Feeds the stat-card trends, <a href="{{ route('review') }}">Review</a>, <a href="{{ route('quality') }}">Quality</a>, <a href="{{ route('accounts') }}">Accounts</a> and <a href="{{ route('pipeline') }}">Pipeline</a>. <code>--only=</code> runs a subset.</td></tr>
-      <tr><td><code>gpdash:merge-basis</code></td><td>Derives why each multi-record identity's members are one person — and where they disagree. <code>gp_source_link.match_key</code> is stamped at first link and never rewritten by a later dedup merge, so the hub cannot answer this itself.</td></tr>
-      <tr><td><code>gpdash:index-advisor</code></td><td>Reports the hub indexes the newer pages want, with DDL. <code>--apply</code> creates them after a confirmation — the only command here that writes to gp-cami.</td></tr>
-    </table>
-    <pre class="code"># nightly
-php artisan gpdash:snapshot
+    <p class="eyebrow" style="margin-top:24px;">gp-cami &middot; building and maintaining the hub</p>
 
-# just the parts the review queue needs
-php artisan gpdash:snapshot --only=links
-
-# precompute the merge basis for the 5000 largest identities
-php artisan gpdash:merge-basis --limit=5000</pre>
-    <p class="lede" style="margin-top:14px;">Backfill options:</p>
-    <div class="spec">
-      <div class="kvrow"><span><code>--from-id</code> / <code>--to-id</code></span><span class="v">bound the source id range (partition / sanity run)</span></div>
-      <div class="kvrow"><span><code>--workers</code></span><span class="v">parallel degree for stage + finalize (default 16)</span></div>
-      <div class="kvrow"><span><code>--chunk</code></span><span class="v">staging batch size (default 5000)</span></div>
-      <div class="kvrow"><span><code>--restart</code></span><span class="v">clear staging checkpoints, start fresh</span></div>
+    <div class="cmd">
+      <h4>php artisan gp:backfill</h4>
+      <p><b>Mode&nbsp;1 &mdash; build the hub from the whole backlog.</b> Runs the entire pipeline as one
+      set-based command (stage&nbsp;&rarr; index&nbsp;&rarr; resolve&nbsp;&rarr; enrich&nbsp;&rarr;
+      dedup&nbsp;&rarr; rollup&nbsp;&rarr; finalize), turning every source record into a finished
+      <code>gp_identity_profile</code> row. Staging and finalize run in parallel, and progress is
+      checkpointed per stripe in <code>gp_watermark</code>, so an interrupted run resumes where it stopped
+      instead of starting over. This is the one-time establishing run; <code>gp:sync</code> keeps the hub
+      current afterwards.</p>
+      <div class="opts">
+        <div class="optrow"><code>system</code><span>Positional argument, not a flag &mdash; which source system to stage from, resolved against <code>gp_source_system</code>. Defaults to <code>streamline_local</code>.</span></div>
+        <div class="optrow"><code>--from-id=</code> <code>--to-id=</code><span>Bound the source id range, inclusive. Use for a bounded sanity run, or to split one backfill across machines by id range.</span></div>
+        <div class="optrow"><code>--chunk=2000</code><span>Staging read/insert batch size.</span></div>
+        <div class="optrow"><code>--workers=16</code><span>Parallel degree for the stage and finalize phases.</span></div>
+        <div class="optrow"><code>--restart</code><span>Clear the staging checkpoints and stage from the beginning. Without it, a re-run resumes.</span></div>
+        <div class="optrow"><code>--legacy-finalize</code><span>Finalize per identity in shards instead of the set-based way. Kept as an escape hatch for comparing the two.</span></div>
+        <div class="optrow internal"><code>--stage-only</code> <code>--segment=</code><span>Internal. The orchestrator spawns its own staging sub-workers with these; not meant to be run by hand.</span></div>
+        <div class="optrow internal"><code>--finalize-shard=</code> <code>--shards=</code><span>Internal. The same, for the finalize phase.</span></div>
+      </div>
     </div>
-    <pre class="code"># full backlog
+
+    <div class="cmd">
+      <h4>php artisan gp:sync</h4>
+      <p><b>Mode&nbsp;2 &mdash; incremental catch-up.</b> Processes only the source rows that changed since
+      the <code>gp_watermark</code> high-water mark, running the same per-record resolve&nbsp;&rarr;&nbsp;finalize
+      logic the backfill uses, then advances the mark. Idempotent: a re-run with nothing new to do does
+      nothing. This is the one that belongs on a schedule.</p>
+      <div class="opts">
+        <div class="optrow"><code>system</code><span>Positional argument, as above. Defaults to <code>streamline_local</code>.</span></div>
+        <div class="optrow"><code>--chunk=1000</code><span>How many changed rows to process per batch.</span></div>
+      </div>
+    </div>
+
+    <div class="cmd">
+      <h4>php artisan gp:rebuild-profile</h4>
+      <p>Re-materializes the denormalized <code>gp_identity_profile</code> read model from the normalized
+      tables &mdash; survivorship is re-applied and the wide row is rewritten. Nothing is re-resolved and no
+      identity changes, so this is the safe command to reach for after changing a survivorship rule, or when
+      one profile looks stale against its own evidence.</p>
+      <div class="opts">
+        <div class="optrow"><code>--identity=</code><span>Rebuild one identity. Omit to rebuild every profile.</span></div>
+      </div>
+    </div>
+
+    <div class="cmd">
+      <h4>php artisan gp:rebuild-aliases</h4>
+      <p>Rebuilds <code>gp_identity_alias</code>, the searchable index of alias names that
+      <code>/api/v1/identity-search</code> matches against alongside the canonical name. The materializers
+      maintain it in step with the <code>aliases</code> JSON as they write it, so this command is for the
+      initial build and for repairing drift &mdash; it re-resolves nothing and touches no table but this one.
+      A full rebuild walks the staged alias rows (~108k) rather than the whole identity range.</p>
+      <div class="opts">
+        <div class="optrow"><code>--identity=</code><span>Rebuild one identity only.</span></div>
+        <div class="optrow"><code>--from=</code> <code>--to=</code><span>Rebuild an <code>identity_id</code> range. Given either, the walk goes over identities instead of over staging.</span></div>
+        <div class="optrow"><code>--verify</code><span>Report coverage instead of rebuilding: how many identities the index holds, against how many carry a surname alias in their JSON rollup. A difference means a materialize ran without the indexer &mdash; the drift this table is most exposed to. Exits non-zero when the two disagree, so it works as a cron check.</span></div>
+      </div>
+    </div>
+
+<pre class="code"># the establishing run
 php artisan gp:backfill
 
-# bounded / sanity slice
+# bounded slice, for a sanity check on a smaller box
 php artisan gp:backfill --from-id=1 --to-id=50000 --workers=8
 
-# incremental thereafter
-php artisan gp:sync</pre>
+# incremental from then on
+php artisan gp:sync
+
+# is the alias index still in step with the profiles?
+php artisan gp:rebuild-aliases --verify</pre>
+
+    <p class="eyebrow" style="margin-top:26px;">gp-cami-dashboard &middot; precomputing what the pages show</p>
+
+    <div class="cmd">
+      <h4>php artisan gpdash:snapshot</h4>
+      <p>Takes one dated reading of the hub&rsquo;s aggregates and stores it in this app&rsquo;s database. It
+      is what gives the stat cards their sparkline and their &ldquo;since last snapshot&rdquo; delta, and what
+      fills <a href="{{ route('review') }}">Review</a>, <a href="{{ route('quality') }}">Quality</a>,
+      <a href="{{ route('accounts') }}">Accounts</a> and <a href="{{ route('pipeline') }}">Pipeline</a>.
+      Nightly is the intended cadence: the history only exists because something recorded it, and a flat
+      delta on a table that should be growing is the whole point of keeping it.</p>
+      <div class="opts">
+        <div class="optrow"><code>--only=</code><span>Run a subset, comma-separated. An unrecognised name is refused, with the valid list printed. The five sections, in run order, are below.</span></div>
+        <div class="optrow"><code>&nbsp;&nbsp;counts</code><span>Exact row counts for the stats-board tables &mdash; today&rsquo;s data point per table.</span></div>
+        <div class="optrow"><code>&nbsp;&nbsp;buckets</code><span>How many source records each identity carries. A healthy hub is dominated by the <code>1</code> bucket; mass in the high buckets is over-merge.</span></div>
+        <div class="optrow"><code>&nbsp;&nbsp;links</code><span>Link states and match-score bands &mdash; the raw material of the review queue.</span></div>
+        <div class="optrow"><code>&nbsp;&nbsp;accounts</code><span>The per-account rollup. <code>gp_source_link.account_id</code> is unindexed on the hub, so this is the one place that scan is paid for.</span></div>
+        <div class="optrow"><code>&nbsp;&nbsp;quality</code><span>Over-merge candidates: the identities carrying the most source records, each re-checked for members that disagree on a high-precision key. A shared key is why they merged; a conflicting key is why they should not have.</span></div>
+        <div class="optrow"><code>--over-merge=25</code><span>The <code>record_count</code> above which an identity is flagged as an over-merge candidate.</span></div>
+        <div class="optrow"><code>--top=50</code><span>How many of those candidates to keep.</span></div>
+      </div>
+    </div>
+
+    <div class="cmd">
+      <h4>php artisan gpdash:merge-basis</h4>
+      <p>Works out, for each multi-record identity, <em>why</em> its members are held to be one person &mdash;
+      and where they nonetheless disagree. The hub cannot answer this itself:
+      <code>gp_source_link.match_key</code> is stamped when the link is first made and never rewritten by a
+      later dedup merge, so the stored key explains the original binding rather than the identity as it now
+      stands. This derives the basis from the evidence and stores it.</p>
+      <div class="opts">
+        <div class="optrow"><code>--identity=</code><span>Compute for one identity id only.</span></div>
+        <div class="optrow"><code>--min-records=2</code><span>Only consider identities carrying at least this many source records &mdash; a single-record identity has no merge to explain.</span></div>
+        <div class="optrow"><code>--limit=1000</code><span>How many identities to process, highest <code>record_count</code> first, so a capped run spends itself on the ones most likely to be wrong.</span></div>
+        <div class="optrow"><code>--refresh</code><span>Recompute identities that already have a stored basis. Without it those are skipped and the run only fills gaps.</span></div>
+      </div>
+    </div>
+
+    <div class="cmd">
+      <h4>php artisan gpdash:index-advisor</h4>
+      <p>Reports the hub indexes the newer dashboard pages want, each with the reason it matters and the DDL
+      to create it &mdash; the account lens and the review queue both scan or filesort without them.
+      Read-only by default. <b>This is the one dashboard command that can write to gp-cami:</b>
+      <code>--apply</code> creates the missing indexes, after a confirmation.</p>
+      <div class="opts">
+        <div class="optrow"><code>--apply</code><span>Create the missing indexes on the hub rather than only reporting them.</span></div>
+      </div>
+    </div>
+
+<pre class="code"># nightly
+php artisan gpdash:snapshot
+
+# just the sections the review queue needs
+php artisan gpdash:snapshot --only=links,quality
+
+# precompute the merge basis for the 5000 largest identities
+php artisan gpdash:merge-basis --limit=5000
+
+# what is the hub missing, and what would it cost to add?
+php artisan gpdash:index-advisor</pre>
   </section>
 
   {{-- ---------------- API ---------------- --}}
   <section class="doc" id="api">
     <p class="eyebrow">Integration</p>
     <h2>API (v1)</h2>
-    <p class="lede">JSON over HTTP, prefix <code>/api/v1</code>. Responses expose <code>ssn_last_four</code> only — never the SSN.</p>
+    <p class="lede">JSON over HTTP, prefix <code>/api/v1</code>. Both endpoints sit behind a
+    Sanctum bearer token (<code>auth:sanctum</code>) and are rate limited to <b>120 requests a
+    minute</b> per caller. Responses expose <code>ssn_last_four</code> only &mdash; never the SSN.</p>
 
     <div class="spec" style="margin-bottom:16px;">
       <h4><span class="method">POST</span><code>/api/v1/identity-search</code></h4>
-      <p style="font-size:.85rem;color:var(--ink-soft);margin:0 0 8px;">Find golden identities by name (last name required).</p>
+      <p style="font-size:.85rem;color:var(--ink-soft);margin:0 0 8px;">Find golden identities by name (last name required). Matches the canonical name <em>and</em> aliases, the latter through <code>gp_identity_alias</code>.</p>
       <pre class="code">// request
 { "last_name": "Mammone", "first_name": "John", "per_page": 25 }
 
@@ -250,9 +623,21 @@ php artisan gp:sync</pre>
                 "first_name": "...", "last_name": "...", "ssn_last_four": "6789" },
   "match": { ...qualifying credential... },
   "prior_resolution": { ...steward decision, if any... } }</pre>
-      <p style="font-size:.8rem;color:var(--ink-faint);margin:8px 0 0;">Qualifying status codes: 20,30,40,45,65,70,80,85,90 · excluded: 0,10,50,60,100.</p>
+      <p style="font-size:.8rem;color:var(--ink-faint);margin:8px 0 0;">A credential also has to be unexpired to qualify: <code>expiry_date IS NULL OR expiry_date &gt;= CURDATE()</code>. Qualifying status codes: 20,30,40,45,65,70,80,85,90 · excluded: 0,10,50,60,100.</p>
     </div>
   </section>
+
+    <div class="notice" style="margin-top:16px;">
+      <b>Oversized rollups are omitted, not truncated.</b> The JSON columns on
+      <code>gp_identity_profile</code> (<code>identifiers</code>, <code>addresses</code>,
+      <code>licenses</code>, <code>credentials</code>, <code>exclusions</code>,
+      <code>accounts</code>, <code>aliases</code>, <code>source_records</code>,
+      <code>resolutions</code>) are unbounded &mdash; one identity carries a 69MB credentials blob,
+      enough to exhaust PHP&rsquo;s memory limit hydrating a single result. Any column over
+      <b>2MB</b> is dropped from the response and named in <code>meta.omitted_fields</code>, so a
+      caller can tell a genuinely empty list apart from one that was withheld. <b>Check that key
+      before treating an absent rollup as &ldquo;none&rdquo;.</b>
+    </div>
 
   {{-- ---------------- PLAYGROUND ---------------- --}}
   <section class="doc" id="playground">
@@ -365,5 +750,17 @@ php artisan gp:sync</pre>
     parity with <code>streamline_local.social_security_num</code>. The hash is the join key; the stored
     value is encrypted; API responses return <code>ssn_last_four</code> only. Identity resolution uses the
     hash so two records with the same SSN merge without either side handling the raw number.</p>
+    <p class="lede" style="margin-top:12px;">Two caveats worth knowing before trusting SSN matching:</p>
+    <div class="spec">
+      <div class="kvrow"><span>Filler SSNs are excluded</span><span class="v">placeholder list + &gt;3 people per hash</span></div>
+      <div class="kvrow"><span>Prod needs <code>GP_SSN_PLAINTEXT_KEY</code></span><span class="v">else SSN matching is unavailable</span></div>
+      <p style="margin:10px 0 0;font-size:.8rem;color:var(--ink-faint);">The key must be the same one
+      CAMI uses or the hashes will not align. Local dev leaves it unset and resolves through the
+      <code>streamline_local</code> encryption-key registry; in prod the key lives behind KMS and is
+      not derivable from the source DB, so it has to be set explicitly &mdash; and the app says so
+      rather than silently hashing to null. Withholding the full SSN from API responses is enforced
+      structurally &mdash; the resource never emits <code>ssn_hash</code> or the ciphertext &mdash;
+      not by a config flag.</p>
+    </div>
   </section>
 @endsection
