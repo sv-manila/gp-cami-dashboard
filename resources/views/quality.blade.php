@@ -41,9 +41,27 @@
     </div>
 
     @if ($flags->isEmpty())
-        <div class="notice">Nothing flagged. Either the hub is clean or
-            <code>gpdash:snapshot --only=quality</code> has not run yet.</div>
+        <div class="notice">
+            @if ($flags->currentPage() > 1)
+                {{-- An out-of-range page is not an empty hub. Saying "nothing
+                     flagged" here read as "the snapshot has not run" on a filter
+                     that has fifty rows on the pages before this one. --}}
+                Nothing on page {{ $flags->currentPage() }} of this list —
+                <a href="{{ $flags->url(1) }}">back to the first page</a>.
+            @else
+                Nothing flagged. Either the hub is clean or
+                <code>gpdash:snapshot --only=quality</code> has not run yet.
+            @endif
+        </div>
     @else
+        <div class="list-head">
+            <div class="muted">
+                {{ number_format($flags->total()) }} flagged
+                {{ $activeFlag ? str_replace('_', ' ', $activeFlag).' ' : '' }}identit{{ $flags->total() === 1 ? 'y' : 'ies' }},
+                heaviest first.
+            </div>
+            @include('partials.per-page', ['current' => $flags->perPage()])
+        </div>
         <table class="doc-t">
             <tr><th>Identity</th><th>Name</th><th class="num-col">Records</th><th>Flag</th><th>Why</th><th></th></tr>
             @foreach ($flags as $f)
@@ -58,6 +76,7 @@
                 </tr>
             @endforeach
         </table>
+        @include('partials.pager', ['paginator' => $flags, 'label' => 'flagged identities'])
         <p class="sub muted">
             A shared key is why records merged; a conflicting one is why they should not have.
             <code>over merge</code> flags size alone — <code>dob conflict</code> and <code>npi conflict</code>

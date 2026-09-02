@@ -170,7 +170,7 @@
         </div>
 
         @if ($basis['links'])
-            <table class="kv" style="margin-top:12px;">
+            <table class="kv" style="margin-top:12px;" data-paged="25">
                 <tr>
                     <th style="width:auto;">Employee record</th>
                     <th style="width:auto;">Account</th>
@@ -241,7 +241,7 @@
         @if ($basis['links'])
             <details style="margin-top:8px;">
                 <summary>Technical detail</summary>
-                <table class="kv" style="margin-top:8px;">
+                <table class="kv" style="margin-top:8px;" data-paged="25">
                     <tr>
                         <th style="width:auto;">Source record</th>
                         <th style="width:auto;">match_key</th>
@@ -278,13 +278,19 @@
     $srcs = $asRows($r->source_records ?? null);
     $linkWords = ['confirmed' => 'Confirmed', 'candidate' => 'Possible match', 'rejected' => 'Rejected'];
     $idTypeWords = ['dea' => 'DEA number', 'mmis' => 'MMIS number'];
-    $rowCap = 100;
+    // Rows past this are not rendered at all. Everything inside it is reachable:
+    // the tables below carry data-paged, so the browser pages them in place
+    // rather than the reader only ever seeing the first hundred.
+    $rowCap = \App\Http\Controllers\DashboardController::PROFILE_ROW_CAP;
+    // credential_match_id -> the credential number that was actually checked,
+    // read from the source DB by the controller. Absent on a source-DB failure.
+    $credentialIds = $credentialIds ?? [];
 @endphp
 
 @if ($idents)
     <div class="detail-section">
         <div class="detail-section-title">Other ID numbers <span class="muted">({{ count($idents) }})</span></div>
-        <table class="kv">
+        <table class="kv" data-paged="25">
             <tr><th style="width:auto;">Type</th><th style="width:auto;">Number</th></tr>
             @foreach ($idents as $i)
                 <tr>
@@ -299,7 +305,7 @@
 @if ($lics)
     <div class="detail-section">
         <div class="detail-section-title">Licenses <span class="muted">({{ count($lics) }})</span></div>
-        <table class="kv">
+        <table class="kv" data-paged="25">
             <tr>
                 <th style="width:auto;">License number</th>
                 <th style="width:auto;">Type</th>
@@ -349,13 +355,17 @@
     <div class="detail-section">
         <div class="detail-section-title">Credential checks <span class="muted">({{ count($creds) }})</span></div>
         @if ($credShown)
-            <table class="kv">
+            <table class="kv" data-paged="25">
                 <tr>
                     <th style="width:auto;">Registry</th>
                     <th style="width:auto;">Result</th>
                     <th style="width:auto;">Most recent</th>
                     <th style="width:auto;">Link</th>
-                    <th style="width:auto;">Match ID</th>
+                    {{-- The credential number that was checked, not the id of the
+                         row recording the check. The match id is an internal
+                         source-DB key and says nothing to a reviewer holding a
+                         certificate number; it is still what the button fetches. --}}
+                    <th style="width:auto;">Credential ID</th>
                     <th style="width:auto;"></th>
                 </tr>
                 @foreach ($credShown as $c)
@@ -367,7 +377,7 @@
                         </td>
                         <td>{{ ($c['current'] ?? false) ? 'Yes' : '' }}</td>
                         <td>{{ $linkWords[$c['link_state'] ?? ''] ?? ($c['link_state'] ?? '—') }}</td>
-                        <td>{{ $c['credential_match_id'] ?? '—' }}</td>
+                        <td class="mono">{{ $credentialIds[$c['credential_match_id'] ?? 0] ?? '—' }}</td>
                         <td>
                             @if (! empty($c['credential_match_id']))
                                 <button type="button" class="btn-mini js-match"
@@ -402,7 +412,7 @@
     @php $exclShown = array_slice($excls, 0, $rowCap); @endphp
     <div class="detail-section">
         <div class="detail-section-title">Exclusion list hits <span class="muted">({{ count($excls) }})</span></div>
-        <table class="kv">
+        <table class="kv" data-paged="25">
             <tr>
                 <th style="width:auto;">Exclusion list</th>
                 <th style="width:auto;">Matched on</th>
@@ -463,7 +473,7 @@
     @if ($accts)
         <div class="detail-section">
             <div class="detail-section-title">Accounts this person appears in <span class="muted">({{ count($accts) }})</span></div>
-            <table class="kv">
+            <table class="kv" data-paged="25">
                 <tr>
                     <th style="width:auto;">Account</th>
                     <th style="width:auto;">Employee records from this account</th>
@@ -482,7 +492,7 @@
     @if ($srcs)
         <div class="detail-section">
             <div class="detail-section-title">Where this person came from <span class="muted">({{ count($srcs) }})</span></div>
-            <table class="kv">
+            <table class="kv" data-paged="25">
                 <tr>
                     <th style="width:auto;">Employee record</th>
                     <th style="width:auto;">Account</th>

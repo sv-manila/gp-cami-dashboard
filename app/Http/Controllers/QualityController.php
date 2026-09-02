@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\GpProfile;
 use App\Models\QualityFlag;
 use App\Models\StatSnapshot;
+use App\Services\QueryInput;
 use Illuminate\Http\Request;
 
 /**
@@ -24,6 +25,9 @@ class QualityController extends Controller
     /** Buckets in display order — the snapshot writes them unordered. */
     private const BUCKETS = ['1', '2-5', '6-20', '21-100', '101-1000', '1000+'];
 
+    /** Flagged identities per page. */
+    private const PER_PAGE = 50;
+
     public function index(Request $request)
     {
         $flag = $request->query('flag');
@@ -42,12 +46,19 @@ class QualityController extends Controller
             }
         }
 
+        // gp_quality_flags is this dashboard's own table, not the hub's, so a
+        // counted paginator is affordable here — the flag tabs already show the
+        // totals, and a reader who filters to one flag needs to reach the rows
+        // past the two hundredth as much as the first.
         $flags = QualityFlag::query()
             ->when($flag, fn ($q) => $q->where('flag', $flag))
             ->orderByDesc('record_count')
             ->orderBy('flag')
-            ->limit(200)
-            ->get();
+            // Total order, so a page boundary cannot fall between two rows the
+            // database is free to return either way round.
+            ->orderBy('identity_id')
+            ->paginate(QueryInput::perPage($request, self::PER_PAGE))
+            ->withQueryString();
 
         return view('quality', [
             'histogram'  => $histogram,

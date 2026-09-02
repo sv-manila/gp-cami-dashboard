@@ -27,6 +27,16 @@ class DashboardController extends Controller
     /** Above this many source records, skip the live shared-key probe (seconds, not ms). */
     private const MAX_DERIVE_LINKS = 500;
 
+    /**
+     * Rows rendered per rollup table on the profile view.
+     *
+     * The tables are paged in the browser (the rollup is one JSON column, so
+     * there is no cheaper page to fetch), which means every row inside the cap
+     * is reachable — the cap is now about how much HTML one response carries,
+     * not about how much of the data a reader may see.
+     */
+    public const PROFILE_ROW_CAP = 500;
+
     public function __construct(
         private SearchResolver $resolver,
         private ProfileSearch $search,
@@ -54,7 +64,8 @@ class DashboardController extends Controller
             // A rejected filter has to be reported, not dropped — see
             // normalizeDob(). Fall back to safe defaults so the page still renders
             // with the stats board and the message.
-            $opts = ['per_page' => config('gpcami.per_page', 50), 'cursor' => null,
+            $opts = ['per_page' => QueryInput::perPage($request, (int) config('gpcami.per_page', 50)),
+                'cursor' => null,
                 'prefix' => $request->boolean('prefix'), 'dob' => null,
                 'exclusions_only' => $request->boolean('excl'), 'last_name' => null];
 
@@ -80,6 +91,8 @@ class DashboardController extends Controller
             'exclOnly'    => (bool) $opts['exclusions_only'],
             // Coerced, not passed raw: ?identity[]=x reached the view as an array.
             'selected'    => is_array($request->query('identity')) ? null : $request->query('identity'),
+            'perPage'     => (int) $opts['per_page'],
+            'pageSizes'   => QueryInput::PAGE_SIZES,
         ]);
     }
 
@@ -285,7 +298,10 @@ class DashboardController extends Controller
         $last = QueryInput::firstString($request, ['last', 'last_name']);
 
         return [
-            'per_page'        => config('gpcami.per_page', 50),
+            // Whitelisted (QueryInput::PAGE_SIZES), not free-form: the page size
+            // is how many gp_identity_profile rows one unauthenticated request
+            // can pull off the hub at a time.
+            'per_page'        => QueryInput::perPage($request, (int) config('gpcami.per_page', 50)),
             'cursor'          => QueryInput::string($request, 'cursor') ?: null,
             'prefix'          => $request->boolean('prefix'),
             'dob'             => self::normalizeDob(QueryInput::string($request, 'dob')),
@@ -396,14 +412,79 @@ class DashboardController extends Controller
     {
         [$profile, $oversized] = $this->loadProfile((int) $identity);
         $basis = $this->basisFor((int) $identity);
+        $credentialIds = $this->credentialIdsFor($profile);
 
         // AJAX (from the search panel) gets the bare partial; a direct visit to
         // the URL gets the full page with the shared nav/header wrapper.
         if (request()->ajax() || request()->wantsJson()) {
-            return view('partials.profile-detail', compact('profile', 'basis', 'oversized'));
+            return view('partials.profile-detail', compact('profile', 'basis', 'oversized', 'credentialIds'));
         }
 
-        return view('profile', compact('profile', 'basis', 'oversized'));
+        return view('profile', compact('profile', 'basis', 'oversized', 'credentialIds'));
+    }
+
+    /**
+     * Credential number per credential-match id, for the credential checks table.
+     *
+     * The hub's credentials rollup carries only credential_match_id, which is a
+     * row id in the CAMI source database and means nothing to a reader — the
+     * number they recognise is credential_matches.credential_id (the certificate
+     * number that was checked, e.g. "076908-1"). The hub never copied it, so it
+     * is read back by primary key from the source database.
+     *
+     * Best-effort by design: the source DB is remote, and a credential number is
+     * a label on a row that is already fully rendered. If the lookup fails the
+     * column shows a dash rather than the page failing.
+     *
+     * @return array<int,string> credential_match_id => credential_id
+     */
+    private function credentialIdsFor(GpProfile $profile): array
+    {
+        $rollup = $profile->credentials ?? null;
+        if (! is_array($rollup) || ! $rollup) {
+            return [];
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map(
+            fn ($c) => (int) ($c['credential_match_id'] ?? 0),
+            $rollup,
+        ))));
+
+        if (! $ids) {
+            return [];
+        }
+
+        // Bounded the same way the table itself is: an over-merged identity can
+        // carry thousands of credential rows, and the view renders at most
+        // PROFILE_ROW_CAP of them, so there is nothing to gain by asking the
+        // source database for the rest.
+        $ids = array_slice($ids, 0, self::PROFILE_ROW_CAP);
+
+        try {
+            return Cache::remember(
+                // Keyed on the ids themselves, not their count: a rollup that
+                // swapped one match for another would otherwise keep serving the
+                // previous page's numbers for the rest of the TTL.
+                'gpcami.credential-ids.' . md5(implode(',', $ids)),
+                (int) config('gpcami.match_gate_ttl', 300),
+                function () use ($ids) {
+                    $rows = DB::connection(config('gpcami.source_connection'))
+                        ->table('credential_matches')
+                        ->whereIn('id', $ids)
+                        ->pluck('credential_id', 'id');
+
+                    return $rows->filter(fn ($v) => $v !== null && $v !== '')
+                        ->map(fn ($v) => (string) $v)
+                        ->all();
+                },
+            );
+        } catch (\Throwable $e) {
+            Log::warning('credential id lookup failed', [
+                'identity' => $profile->identity_id, 'exception' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**
@@ -521,7 +602,7 @@ class DashboardController extends Controller
                     return response()->json(['error' => "Credential match $id is no longer in the source database."], 404);
                 }
                 $payload = array_diff_key((array) $row, ['match' => null]);
-                $payload['match'] = $this->decodeOrRaw($row->match);
+                $payload['match'] = self::withoutImages($this->decodeOrRaw($row->match));
             } else {
                 $row = DB::connection($src)->selectOne(
                     'SELECT m.id, m.employee_id, m.exclusion_record_id, m.date_created, m.metadata,
@@ -537,8 +618,8 @@ class DashboardController extends Controller
                     return response()->json(['error' => "Exclusion match $id is no longer in the source database."], 404);
                 }
                 $payload = array_diff_key((array) $row, ['record' => null, 'metadata' => null]);
-                $payload['metadata'] = $this->decodeOrRaw($row->metadata);
-                $payload['exclusion_record'] = $this->decodeOrRaw($row->record);
+                $payload['metadata'] = self::withoutImages($this->decodeOrRaw($row->metadata));
+                $payload['exclusion_record'] = self::withoutImages($this->decodeOrRaw($row->record));
             }
         } catch (\Throwable $e) {
             // The driver message can carry hostnames, schema and column names —
@@ -586,6 +667,48 @@ class DashboardController extends Controller
 
             return false;   // fail closed
         }
+    }
+
+    /** Payload keys that hold a picture rather than information. */
+    private const IMAGE_KEYS = ['image', 'images', 'screenshot', 'screenshots', 'photo', 'thumbnail'];
+
+    /**
+     * Replace embedded images in a match payload with a note saying one was there.
+     *
+     * Registry scrapers attach a screenshot of the page they read as base64
+     * inside the match JSON — a single credential match carries 321,835
+     * characters of PNG, and an exclusion record a data: URI of its own. Dumped
+     * into the <pre> block the panel renders, that is a third of a megabyte of
+     * unreadable text burying the fields the reviewer opened the payload for,
+     * and it is sent over the wire on every "Match data" click.
+     *
+     * The note keeps the fact that a capture exists (and how big it was) without
+     * carrying the capture itself. Matched by key name and by data: URI, so a
+     * registry that names the field something new is still caught by its value.
+     */
+    private static function withoutImages(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return str_starts_with($value, 'data:image/') ? self::imageNote($value) : $value;
+        }
+
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $out = [];
+        foreach ($value as $key => $item) {
+            $out[$key] = is_string($item) && in_array(mb_strtolower((string) $key), self::IMAGE_KEYS, true)
+                ? ($item === '' ? $item : self::imageNote($item))
+                : self::withoutImages($item);
+        }
+
+        return $out;
+    }
+
+    private static function imageNote(string $raw): string
+    {
+        return '[image omitted, ' . number_format(strlen($raw) / 1024, 1) . ' KB]';
     }
 
     /** Scraper payloads are usually JSON but not guaranteed to be. */

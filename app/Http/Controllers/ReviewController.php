@@ -6,7 +6,9 @@ use App\Models\GpProfile;
 use App\Models\MergeBasis;
 use App\Models\StatSnapshot;
 use App\Services\MergeBasisDeriver;
+use App\Services\QueryInput;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -26,19 +28,44 @@ class ReviewController extends Controller
 
     private const PER_PAGE = 40;
 
+    /**
+     * How deep the queue can be paged.
+     *
+     * The queue is the probabilistic residual, not the whole link table, so this
+     * is far past its real depth on any healthy hub; it exists so a hand-edited
+     * ?page= cannot ask the hub to sort and discard its way to an arbitrary
+     * offset.
+     */
+    private const MAX_PAGES = 500;
+
     public function index(Request $request)
     {
         $db = DB::connection(config('gpcami.connection'));
         $state = $request->query('state', 'open');
         $states = $state === 'pinned' ? ['pinned'] : self::OPEN_STATES;
 
+        $perPage = QueryInput::perPage($request, self::PER_PAGE);
+        $page = min(self::MAX_PAGES, max(1, (int) $request->query('page', 1)));
+
         $summary = $this->summary();
         $links = [];
         $error = null;
+        $more = false;
 
         try {
             // idx_match_state makes this a range read over the flagged links
             // only — the 13.4M auto_match rows are never touched.
+            //
+            // OFFSET rather than a keyset cursor, deliberately. The ordering is
+            // by match_score, which no index provides, so every page has to sort
+            // the flagged band whichever way it is paged; a keyset predicate
+            // would buy nothing but a three-part composite cursor over a
+            // nullable column. What OFFSET costs on top is the discard, and the
+            // page depth is capped so that stays bounded.
+            //
+            // No COUNT to go with it: the queue depth is already on the page,
+            // from the nightly snapshot. One row past the page tells the pager
+            // what it needs.
             $links = $db->select(
                 'SELECT /*+ MAX_EXECUTION_TIME(15000) */
                         l.link_id, l.identity_id, l.source_table, l.source_id, l.account_id,
@@ -46,21 +73,30 @@ class ReviewController extends Controller
                    FROM gp_source_link l
                   WHERE l.match_state IN (' . implode(',', array_fill(0, count($states), '?')) . ')
                   ORDER BY l.match_score IS NULL, l.match_score ASC, l.link_id
-                  LIMIT ' . self::PER_PAGE,
+                  LIMIT ' . ($perPage + 1) . ' OFFSET ' . (($page - 1) * $perPage),
                 $states,
             );
+            $more = count($links) > $perPage;
+            $links = array_slice($links, 0, $perPage);
         } catch (\Throwable $e) {
             Log::error('review queue query failed', ['exception' => $e->getMessage()]);
             $error = 'Could not read the link queue from the hub.';
         }
 
+        $queue = (new Paginator($links, $perPage, $page, [
+            'path'  => $request->url(),
+            'query' => $request->query(),
+        ]))->hasMorePagesWhen($more && $page < self::MAX_PAGES);
+
         return view('review', [
             'links'    => $links,
+            'queue'    => $queue,
             'names'    => $this->namesFor(array_map(fn ($l) => (int) $l->identity_id, $links)),
             'summary'  => $summary,
             'state'    => $state,
             'error'    => $error,
-            'perPage'  => self::PER_PAGE,
+            'perPage'  => $perPage,
+            'depthCap' => $more && $page >= self::MAX_PAGES,
         ]);
     }
 

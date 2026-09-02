@@ -63,4 +63,33 @@ class QueryInput
 
         return $default;
     }
+
+    /**
+     * Page sizes a list view will honour.
+     *
+     * A whitelist rather than a clamp: every list on this dashboard reads a hub
+     * table whose rows are measured in kilobytes (and whose JSON rollups are
+     * measured in megabytes), so `per_page` is a lever on a shared database
+     * rather than a display preference.
+     */
+    public const PAGE_SIZES = [25, 50, 100, 200];
+
+    /**
+     * Page size for a list view, falling back to the caller's default.
+     *
+     * Unlike a filter, an unusable page size is not worth failing the page over
+     * — it changes how many rows are shown, never which rows match, so there is
+     * nothing to silently drop and nothing to mislead the reader about. Array
+     * input (`?per_page[]=x`) takes the same fallback instead of raising.
+     */
+    public static function perPage(Request $request, int $default, string $key = 'per_page'): int
+    {
+        $value = $request->query($key);
+
+        if (! is_scalar($value)) {
+            return $default;
+        }
+
+        return in_array((int) $value, self::PAGE_SIZES, true) ? (int) $value : $default;
+    }
 }
