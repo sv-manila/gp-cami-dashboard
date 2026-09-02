@@ -49,11 +49,22 @@
         <div class="error">{{ $error }}</div>
     @elseif (! $links)
         <div class="notice">
-            Nothing in this queue — every link in the hub resolved on a deterministic key.
-            That is the expected state after a clean backfill; rows land here when the probabilistic
-            pass scores a pair inside the review band.
+            @if ($queue->currentPage() > 1)
+                Nothing on page {{ $queue->currentPage() }} of this queue —
+                <a href="{{ $queue->url(1) }}">back to the first page</a>.
+            @else
+                Nothing in this queue — every link in the hub resolved on a deterministic key.
+                That is the expected state after a clean backfill; rows land here when the probabilistic
+                pass scores a pair inside the review band.
+            @endif
         </div>
     @else
+        <div class="list-head">
+            <div class="muted">
+                Links {{ number_format($queue->firstItem()) }}–{{ number_format($queue->lastItem()) }}, weakest score first.
+            </div>
+            @include('partials.per-page', ['current' => $perPage])
+        </div>
         <table class="doc-t">
             <tr>
                 <th>Link</th><th>Identity</th><th>Name</th><th>Source row</th>
@@ -78,7 +89,11 @@
                 </tr>
             @endforeach
         </table>
-        <p class="sub muted">Showing at most {{ $perPage }} links.</p>
+        @include('partials.pager', ['paginator' => $queue])
+        @if ($depthCap)
+            <p class="sub muted">The queue stops paging here. A queue this deep is a pipeline problem
+                rather than a review backlog — see the score bands above.</p>
+        @endif
     @endif
 
     <h2 class="section-h">Compare two identities</h2>

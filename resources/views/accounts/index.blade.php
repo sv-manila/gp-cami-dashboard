@@ -25,6 +25,10 @@
             @endif
         </div>
     @else
+        <div class="list-head">
+            <div class="muted">{{ number_format($accounts->total()) }} account{{ $accounts->total() === 1 ? '' : 's' }}{{ $q ? ' matching "'.$q.'"' : '' }}</div>
+            @include('partials.per-page', ['current' => $accounts->perPage()])
+        </div>
         <table class="doc-t">
             <tr><th>Account</th><th>Name</th><th class="num-col">Identities</th><th class="num-col">Source links</th><th class="num-col">Records per identity</th></tr>
             @foreach ($accounts as $a)
@@ -37,6 +41,7 @@
                 </tr>
             @endforeach
         </table>
+        @include('partials.pager', ['paginator' => $accounts, 'label' => 'accounts'])
         <p class="sub muted">Rolled up {{ $stale?->diffForHumans() ?? 'never' }}. Names come from the CAMI
             source database; the hub stores account ids only.</p>
     @endif

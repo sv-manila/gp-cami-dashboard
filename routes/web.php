@@ -32,6 +32,10 @@ Route::middleware(DevOnly::class)->group(function () {
         ->whereNumber('account')->name('accounts.show');
 
     // Docs + executable API examples.
-    Route::view('/features', 'welcome')->name('features');
+    // The Overview page reads its at-a-glance counts from the dashboard's own
+    // snapshot table, so opening the docs never touches the hub.
+    Route::get('/features', fn () => view('welcome', [
+        'glance' => \App\Models\StatSnapshot::latestCounts(),
+    ]))->name('features');
     Route::post('/api-try', [ApiPlaygroundController::class, 'proxy'])->name('api.try');
 });

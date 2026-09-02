@@ -9,53 +9,60 @@
         @endif
     </p>
 
-    <div class="cards">
-        @foreach ($stats as $label => $s)
-            @php
-                $help = config('gpcami.stats_help')[$label] ?? null;
-                $table = config('gpcami.stats_tables')[$label];
-                $series = array_values($trends[$label] ?? []);
-            @endphp
-            <div class="card accent">
-                <div class="label">
-                    <span>{{ $label }}</span>
-                    @if ($help)
-                        <span class="info" tabindex="0" aria-label="{{ $help }}">
-                            i<span class="tip">{{ $help }}</span>
-                        </span>
-                    @endif
-                </div>
-                @if ($s['error'])
-                    <div class="num err">{{ $s['error'] }}</div>
-                @else
-                    <div class="num" data-table="{{ $table }}">{{ ($s['approx'] ?? false) ? '≈ ' : '' }}{{ number_format($s['count']) }}</div>
+    {{-- The stats band is two columns: the rotating logo hologram, then the
+         cards. The projection is decoration and drops out under 900px, where
+         .stats-row collapses to the single column the cards already had. --}}
+    <div class="stats-row">
+        @include('partials.hologram')
 
-                    <div class="card-foot">
-                        @if (($s['delta'] ?? null) !== null)
-                            {{-- A flat delta on a table that should be growing is the
-                                 point of this line: "13.4M" looks identical whether
-                                 the rollup ran last night or stalled a week ago. --}}
-                            <span class="delta {{ $s['delta'] > 0 ? 'up' : ($s['delta'] < 0 ? 'down' : 'flat') }}">
-                                {{ $s['delta'] > 0 ? '+' : '' }}{{ number_format($s['delta']) }}
-                                <span class="muted">since last snapshot</span>
+        <div class="cards">
+            @foreach ($stats as $label => $s)
+                @php
+                    $help = config('gpcami.stats_help')[$label] ?? null;
+                    $table = config('gpcami.stats_tables')[$label];
+                    $series = array_values($trends[$label] ?? []);
+                @endphp
+                <div class="card accent">
+                    <div class="label">
+                        <span>{{ $label }}</span>
+                        @if ($help)
+                            <span class="info" tabindex="0" aria-label="{{ $help }}">
+                                i<span class="tip">{{ $help }}</span>
                             </span>
                         @endif
-                        @if (count($series) > 1)
-                            @include('partials.sparkline', ['series' => $series])
-                        @endif
                     </div>
+                    @if ($s['error'])
+                        <div class="num err">{{ $s['error'] }}</div>
+                    @else
+                        <div class="num" data-table="{{ $table }}">{{ ($s['approx'] ?? false) ? '≈ ' : '' }}{{ number_format($s['count']) }}</div>
 
-                    @if ($s['approx'] ?? false)
-                        {{-- Not a busy hub: InnoDB has no stored row count, so an exact
-                             COUNT(*) over 13M rows takes seconds. Estimate now, exact on request. --}}
-                        <div class="approx-note">
-                            estimate
-                            <button type="button" class="btn-mini js-exact" data-table="{{ $table }}">count exactly</button>
+                        <div class="card-foot">
+                            @if (($s['delta'] ?? null) !== null)
+                                {{-- A flat delta on a table that should be growing is the
+                                     point of this line: "13.4M" looks identical whether
+                                     the rollup ran last night or stalled a week ago. --}}
+                                <span class="delta {{ $s['delta'] > 0 ? 'up' : ($s['delta'] < 0 ? 'down' : 'flat') }}">
+                                    {{ $s['delta'] > 0 ? '+' : '' }}{{ number_format($s['delta']) }}
+                                    <span class="muted">since last snapshot</span>
+                                </span>
+                            @endif
+                            @if (count($series) > 1)
+                                @include('partials.sparkline', ['series' => $series])
+                            @endif
                         </div>
+
+                        @if ($s['approx'] ?? false)
+                            {{-- Not a busy hub: InnoDB has no stored row count, so an exact
+                                 COUNT(*) over 13M rows takes seconds. Estimate now, exact on request. --}}
+                            <div class="approx-note">
+                                estimate
+                                <button type="button" class="btn-mini js-exact" data-table="{{ $table }}">count exactly</button>
+                            </div>
+                        @endif
                     @endif
-                @endif
-            </div>
-        @endforeach
+                </div>
+            @endforeach
+        </div>
     </div>
 
     @if (! $trends)
@@ -142,6 +149,7 @@
                     @if ($matchedOn)<span class="muted">· matched on {{ $matchedOn }}</span>@endif
                 </div>
                 <div class="results-actions">
+                    @include('partials.per-page', ['current' => $perPage, 'sizes' => $pageSizes])
                     <a class="btn-mini" href="{{ route('search.export', array_merge($qs, ['format' => 'csv'])) }}">Export CSV</a>
                     <a class="btn-mini" href="{{ route('search.export', array_merge($qs, ['format' => 'json'])) }}">Export JSON</a>
                 </div>
@@ -168,18 +176,10 @@
                             </li>
                         @endforeach
                     </ul>
-                    <div class="pager">
-                        @if ($results->onFirstPage())
-                            <span class="btn-mini disabled">← Previous</span>
-                        @else
-                            <a class="btn-mini" href="{{ $results->appends($qs)->previousPageUrl() }}">← Previous</a>
-                        @endif
-                        @if ($results->hasMorePages())
-                            <a class="btn-mini" href="{{ $results->appends($qs)->nextPageUrl() }}">Next →</a>
-                        @else
-                            <span class="btn-mini disabled">Next →</span>
-                        @endif
-                    </div>
+                    {{-- Cursor pages, not numbered ones: keyset paging over
+                         gp_identity_profile stays a range read at any depth, which
+                         OFFSET on a 13.6M-row table would not. --}}
+                    @include('partials.pager', ['paginator' => $results->appends($qs), 'standalone' => false])
                 </div>
                 <div class="results-detail" id="detail-panel">
                     <div class="detail-placeholder muted">Select an identity to view full details.</div>
@@ -303,7 +303,12 @@
 
                 fetch(base + '/' + id, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
-                    .then(function (html) { panel.innerHTML = html; })
+                    .then(function (html) {
+                        panel.innerHTML = html;
+                        // The rollup tables arrive with this HTML, so their
+                        // in-page pagers have to be built after it lands.
+                        window.gpPageTables(panel);
+                    })
                     .catch(function (e) { panel.innerHTML = '<div class="error">Failed to load details: ' + e.message + '</div>'; });
             }
 

@@ -26,8 +26,10 @@ class GpDashIndexAdvisor extends Command
     /** @var array<int,array{table:string,name:string,columns:string,why:string}> */
     private const WANTED = [
         [
-            'table' => 'gp_source_link', 'name' => 'idx_account', 'columns' => 'account_id',
-            'why' => 'Account lens — listing the identities in one account is a full scan without it.',
+            'table' => 'gp_source_link', 'name' => 'idx_account', 'columns' => 'account_id, identity_id',
+            'why' => 'Account lens — listing the identities in one account is a full scan without it, and '
+                . 'the second column is what lets that list be paged: it comes back already in identity_id '
+                . 'order, so no filesort. On account_id alone the page falls back to a single capped list.',
         ],
         [
             'table' => 'gp_source_link', 'name' => 'idx_state_score', 'columns' => 'match_state, match_score',

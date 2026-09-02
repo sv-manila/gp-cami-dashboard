@@ -341,10 +341,26 @@ table.syntax-t code{font-family:var(--mono);}
   margin-top:18px;font-size:13px;color:var(--ink-soft);}
 .results-actions{display:flex;gap:6px;}
 .results-actions .btn-mini{text-decoration:none;display:inline-block;}
-.pager{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;
+.pager{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;
   border-top:1px solid var(--line);background:var(--surface-2);}
 .pager .btn-mini{text-decoration:none;}
-.pager .btn-mini.disabled{opacity:.4;cursor:default;}
+.pager .btn-mini.disabled,.pager .btn-mini:disabled{opacity:.4;cursor:default;}
+.pager .btn-mini:disabled:hover{background:var(--surface);border-color:var(--line);}
+.pager-info{font-size:11px;font-weight:600;text-align:center;}
+
+/* pagers that stand on their own under a table, rather than closing a bordered list */
+.pager.standalone{border:1px solid var(--line);border-radius:8px;margin:0 0 18px;}
+.pager.table-pager{border:1px solid var(--line);border-top:none;border-radius:0 0 8px 8px;
+  padding:7px 10px;margin:-1px 0 12px;}
+
+/* row-count switch, next to a list's header or export buttons */
+.list-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;
+  gap:10px;margin:0 0 8px;font-size:12px;}
+.per-page{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;}
+.per-page a{color:var(--ink-soft);border:1px solid var(--line);border-radius:5px;
+  padding:2px 6px;text-decoration:none;}
+.per-page a:hover{color:#fff;background:var(--orange);border-color:var(--orange);}
+.per-page a.active{color:#fff;background:var(--navy);border-color:var(--navy);}
 
 /* the result rows carry a second line of context now */
 .name-item{flex-direction:column;align-items:stretch;gap:2px;}
@@ -365,3 +381,86 @@ table.syntax-t code{font-family:var(--mono);}
 .play-status{font-family:var(--mono);font-size:12px;font-weight:700;}
 .play-status.ok{color:var(--ok);}
 .play-status.bad{color:var(--crit);}
+
+/* ---- rotating logo hologram (dashboard stats) --------------------------------
+   Ported from the CAMI Command Center artifacts (registry-map/cc.css). Two
+   differences from the original, both because this page is not that page:
+
+   1. There the projection is position:fixed behind the whole board. Here it is an
+      inline grid cell to the LEFT of the stat cards, so the stage is contained and
+      the mask fades it inside its own box.
+   2. That deck is always dark, so the glyph could sit at .38 opacity and lean on a
+      red glow and screen-blended scanlines. This app is theme-aware, and none of
+      that survives a white background — so the glyph opacity, the glow colour and
+      the scanline colour/blend are variables, re-set for dark below. */
+:root{
+  --holo-glyph:.62; --holo-glow:rgba(244,125,39,.42);
+  --holo-scan:rgba(0,40,76,.10); --holo-scan-blend:multiply;
+  --holo-pool:rgba(244,125,39,.26); --holo-pool-2:rgba(201,162,39,.10);
+}
+@media (prefers-color-scheme:dark){:root{
+  --holo-glyph:.42; --holo-glow:rgba(255,68,56,.5);
+  --holo-scan:rgba(126,198,224,.085); --holo-scan-blend:screen;
+  --holo-pool:rgba(255,68,56,.30); --holo-pool-2:rgba(240,120,50,.10);
+}}
+
+/* Stats band: projection column, then the existing card grid.
+   The projection is only ever allowed the width the numbers do not need — a
+   32px tabular count like "8 14,479,652" wants ~200px of card interior, and a
+   decorative column that pushes a card below that is a bug, not a flourish.
+   Hence the two step-downs below rather than one breakpoint. */
+.stats-row{display:grid;grid-template-columns:236px minmax(0,1fr);gap:22px;
+  align-items:center;}
+/* Not enough room for the projection AND three cards: keep the projection, at a
+   narrower width, and let the cards fall to two columns (6 cards, 3 rows). */
+@media (max-width:1139px){
+  .stats-row{grid-template-columns:160px minmax(0,1fr);}
+  .stats-row .cards{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+/* Below this the cards are already tightening toward their single-column stack,
+   so the decoration gives the width back entirely. */
+@media (max-width:900px){
+  .stats-row{grid-template-columns:minmax(0,1fr);}
+  .stats-row .cards{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .stats-row .holo{display:none;}
+}
+@media (max-width:640px){.stats-row .cards{grid-template-columns:minmax(0,1fr);}}
+
+.holo{position:relative;display:grid;place-items:center;pointer-events:none;
+  overflow:hidden;align-self:stretch;min-height:220px;
+  /* projector cone: bright in the middle, gone before the card edge, so nothing
+     competes with the readouts next to it */
+  -webkit-mask-image:radial-gradient(62% 58% at 50% 48%,#000 0,rgba(0,0,0,.5) 62%,transparent 100%);
+  mask-image:radial-gradient(62% 58% at 50% 48%,#000 0,rgba(0,0,0,.5) 62%,transparent 100%);}
+.holo-stage{position:relative;width:min(100%,210px);aspect-ratio:1;perspective:1100px;
+  animation:holoflicker 9s steps(1,end) infinite,holofloat 14s ease-in-out infinite;}
+/* emitter pool on the deck below the glyph */
+.holo-stage::before{content:"";position:absolute;left:8%;right:8%;bottom:-4%;height:16%;
+  border-radius:50%;filter:blur(6px);
+  background:radial-gradient(50% 50% at 50% 50%,var(--holo-pool),var(--holo-pool-2) 55%,transparent 78%);}
+/* scanlines ride over the whole projection */
+.holo-stage::after{content:"";position:absolute;inset:-6%;mix-blend-mode:var(--holo-scan-blend);
+  background:repeating-linear-gradient(0deg,var(--holo-scan) 0 1px,transparent 1px 4px);
+  animation:holoscan 6s linear infinite;}
+/* one slow revolution per minute — a drifting presence beside the stats, not a
+   motion feature competing with them */
+.holo-spin{position:absolute;inset:0;transform-style:preserve-3d;
+  animation:holospin 60s linear infinite;}
+/* backface-visibility stays default, so the back half of the turn shows the V
+   mirrored rather than blanking out at 180deg */
+.holo-l{position:absolute;inset:0;width:100%;height:100%;opacity:var(--holo-glyph);
+  filter:drop-shadow(0 0 26px var(--holo-glow));}
+@keyframes holospin{from{transform:rotateX(14deg) rotateY(0deg);}
+                      to{transform:rotateX(14deg) rotateY(360deg);}}
+@keyframes holoscan{from{background-position:0 0;} to{background-position:0 -40px;}}
+/* the projection breathes in and out of the deck instead of hanging dead still */
+@keyframes holofloat{0%,100%{transform:translateY(-8px) scale(.985);}
+                     50%{transform:translateY(8px) scale(1.015);}}
+/* an unstable projector: brightness drops for a single frame now and then */
+@keyframes holoflicker{0%,7%,9%,42%,44%,100%{opacity:1;filter:none;}
+                       8%{opacity:.72;filter:brightness(1.5);}
+                       43%{opacity:.85;}}
+@media (prefers-reduced-motion:reduce){
+  .holo-spin,.holo-stage,.holo-stage::after{animation:none;}
+  .holo-spin{transform:rotateX(14deg) rotateY(-24deg);}
+}

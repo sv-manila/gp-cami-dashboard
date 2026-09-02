@@ -30,6 +30,35 @@ class StatSnapshot extends Model
     public const LINK_QUALITY = 'link_quality';
 
     /**
+     * The most recent recorded table counts, for the Overview page's at-a-glance
+     * strip: ['as_of' => 'YYYY-MM-DD', 'counts' => [label => ['value'=>int,'approx'=>bool]]].
+     *
+     * Reads this app's own snapshot table, never the hub -- the Overview page is
+     * documentation and must not cost a 13M-row scan to open. Returns an empty
+     * array before the first `gpdash:snapshot` run, which the view reads as
+     * "there is nothing to show yet, hide the strip".
+     */
+    public static function latestCounts(): array
+    {
+        $asOf = static::where('metric', self::TABLE_COUNT)->max('captured_on');
+        if (! $asOf) {
+            return [];
+        }
+
+        $rows = static::query()
+            ->where('metric', self::TABLE_COUNT)
+            ->where('captured_on', $asOf)
+            ->get(['label', 'value', 'approx']);
+
+        $counts = [];
+        foreach ($rows as $r) {
+            $counts[$r->label] = ['value' => (int) $r->value, 'approx' => (bool) $r->approx];
+        }
+
+        return ['as_of' => substr((string) $asOf, 0, 10), 'counts' => $counts];
+    }
+
+    /**
      * Series for one metric: label => [ 'YYYY-MM-DD' => value ], oldest first.
      *
      * @return array<string, array<string,int>>
